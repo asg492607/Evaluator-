@@ -2131,21 +2131,22 @@ Add 5 Blank
                 let name = "";
                 let cos = [];
                 let strips = 3;
-                let marks = 9;
+                let marks = 4;
                 
-                if(p === 'ca_unit1') { name = "Unit I Assessment (CO1-3)"; cos = [1,2,3]; strips = 3; }
-                else if(p === 'ca_unit2') { name = "Unit II Assessment (CO4-5)"; cos = [4,5]; strips = 3; }
-                else if(p === 'ese_full') { name = "End Semester Examination (CO1-5)"; cos = [1,2,3,4,5]; strips = 5; marks = 10; }
+                if(p === 'ca_unit1' || p === 'ipa1') { name = "Continuous Assessment - IPA 1 (CO1, CO2, CO3)"; cos = [1,2,3]; strips = 3; marks = 4; }
+                else if(p === 'ca_unit2' || p === 'ipa2') { name = "Continuous Assessment - IPA 2 (CO4, CO5)"; cos = [4,5]; strips = 2; marks = 4; }
+                else if(p === 'ese_full' || p === 'ese') { name = "End Semester Examination (CO1-5)"; cos = [1,2,3,4,5]; strips = 5; marks = 5; }
+                else if(p === 'ca_full') { name = "Continuous Assessment - Full (CO1-5)"; cos = [1,2,3,4,5]; strips = 5; marks = 4; }
                 
-                document.getElementById('examName').value = name;
-                document.getElementById('examModalTitle').textContent = p.includes('ese') ? 'Create ESE Exam' : 'Create CA Exam';
+                if (document.getElementById('examName')) document.getElementById('examName').value = name;
+                if (document.getElementById('examModalTitle')) document.getElementById('examModalTitle').textContent = p.includes('ese') ? 'Create ESE Exam' : 'Create CA Exam';
                 
                 // Set Strip Metadata
                 modal.dataset.strips = strips;
                 modal.dataset.preset = p;
 
                 // Adjust COs in UI
-                buildCOStructure(); // Rebuild with default 5
+                buildCOStructure();
                 
                 // Hide non-relevant COs and set marks
                 for(let i=1; i<=5; i++){
@@ -2164,6 +2165,10 @@ Add 5 Blank
                 }
                 showToast(`${name} preset applied.`, "success");
             };
+
+            if (type && type !== 'standard') {
+                window.applyProjectPreset(type);
+            }
         }
 
         function closeExamModal() {
@@ -2520,44 +2525,55 @@ Template
             if (!coList) return;
             coList.innerHTML = '';
 
+            const modal = document.getElementById('examModal');
+            const preset = (modal?.dataset?.preset || '').toLowerCase();
+            const examNameVal = (document.getElementById('examName')?.value || '').toLowerCase();
+
+            let cosToBuild = [1, 2, 3, 4, 5];
+            let defaultMarks = 4;
+
+            if (preset.includes('unit1') || preset.includes('ipa1') || examNameVal.includes('ipa 1') || examNameVal.includes('unit 1')) {
+                cosToBuild = [1, 2, 3];
+                defaultMarks = 4;
+            } else if (preset.includes('unit2') || preset.includes('ipa2') || examNameVal.includes('ipa 2') || examNameVal.includes('unit 2')) {
+                cosToBuild = [4, 5];
+                defaultMarks = 4;
+            } else if (preset.includes('ese')) {
+                cosToBuild = [1, 2, 3, 4, 5];
+                defaultMarks = 5;
+            }
+
+            const totalPresetMarks = cosToBuild.length * defaultMarks;
+
             // SPEED: Add quick fill template
             const templateDiv = document.createElement('div');
             templateDiv.style.cssText = 'background:#fef3c7;border:2px solid #fbbf24;border-radius:10px;padding:14px;margin-bottom:16px;';
             templateDiv.innerHTML = `
-                <div style="font-weight:700;color:#92400e;margin-bottom:10px;font-size:14px;">Quick Fill All COs</div>
+                <div style="font-weight:700;color:#92400e;margin-bottom:10px;font-size:14px;">Quick Fill Active COs (${cosToBuild.map(i => 'CO' + i).join(', ')})</div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                    <button onclick="fillAllCOMarks(5, 5, 5, 5)" class="btn btn-sm btn-warning" style="font-size:12px;">
-                        Equal: 5+5+5+5 = 20 each
-                    </button>
-                    <button onclick="fillAllCOMarks(10, 5, 3, 2)" class="btn btn-sm btn-info" style="font-size:12px;">
-                        Weighted: 10+5+3+2 = 20 each
-                    </button>
-                    <button onclick="fillAllCOMarks(8, 8, 4, 0)" class="btn btn-sm btn-success" style="font-size:12px;">
-                        Top Heavy: 8+8+4+0 = 20 each
+                    <button onclick="fillActiveCOMarks(${defaultMarks})" class="btn btn-sm btn-warning" style="font-size:12px;">
+                        Standard: ${cosToBuild.map(i => defaultMarks).join('+')} = ${totalPresetMarks}M Total
                     </button>
                 </div>
-                <div style="font-size:11px;color:#78350f;">Auto-fill all 5 COs with selected marks pattern</div>
+                <div style="font-size:11px;color:#78350f;">Auto-fill active COs with ${defaultMarks}M per criterion</div>
             `;
             coList.appendChild(templateDiv);
 
-            const isESE = document.getElementById('examModal').dataset.preset?.includes('ese');
-            const coMarks = isESE ? 10 : 9;
-            const stripCount = parseInt(document.getElementById('examModal').dataset.strips) || 3;
-
             for (let i = 1; i <= 5; i++) {
+                const isVisible = cosToBuild.includes(i);
                 const coDiv = document.createElement('div');
                 coDiv.className = 'co-item';
                 coDiv.dataset.co = i;
-                coDiv.style.cssText = 'background:#f9fafb;border:2px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05);';
+                coDiv.style.cssText = `background:#f9fafb;border:2px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:${isVisible ? 'block' : 'none'};`;
                 
                 coDiv.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                         <span style="font-size:16px;font-weight:800;color:#1e40af;">CO${i} - Course Outcome ${i}</span>
-                        <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;">Standard: ${coMarks}M</span>
+                        <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;">Standard: ${defaultMarks}M</span>
                     </div>
                     <div class="form-group" style="margin-bottom:12px;">
                         <label style="font-size:13px;color:#4b5563;font-weight:600;">Outcome Statement (CO Description)</label>
-                        <textarea class="co${i}-desc" placeholder="Enter what students will learn..." rows="2" style="width:100%;padding:10px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;resize:none;box-sizing:border-box;"></textarea>
+                        <textarea class="co${i}-desc" placeholder="Enter what students will learn in CO${i}..." rows="2" style="width:100%;padding:10px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;resize:none;box-sizing:border-box;"></textarea>
                     </div>
                     <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px;">
                         <div style="display:flex;gap:15px;align-items:flex-end;">
@@ -2569,7 +2585,7 @@ Template
                             </div>
                             <div style="flex:1;">
                                 <label style="font-size:12px;font-weight:700;color:#0369a1;display:block;margin-bottom:4px;">Marks (C1)</label>
-                                <input type="number" class="co${i}-c1" value="${coMarks}" style="width:100%;padding:10px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-weight:700;text-align:center;">
+                                <input type="number" class="co${i}-c1" value="${defaultMarks}" style="width:100%;padding:10px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-weight:700;text-align:center;">
                                 <input type="hidden" class="co${i}-qcount" value="1">
                             </div>
                         </div>
@@ -2580,17 +2596,13 @@ Template
             refreshLessonDropdowns();
         }
 
-        // SPEED: Fill all COs with same marks pattern (Safe version)
-        function fillAllCOMarks(c1, c2, c3, c4) {
+        function fillActiveCOMarks(val) {
             for (let i = 1; i <= 5; i++) {
-                const el1 = document.querySelector(`.co${i}-c1`); if (el1) el1.value = c1;
-                const el2 = document.querySelector(`.co${i}-c2`); if (el2) el2.value = c2;
-                const el3 = document.querySelector(`.co${i}-c3`); if (el3) el3.value = c3;
-                const el4 = document.querySelector(`.co${i}-c4`); if (el4) el4.value = c4;
+                const el1 = document.querySelector(`.co${i}-c1`); if (el1) el1.value = val;
             }
-            const total = (c1||0) + (c2||0) + (c3||0) + (c4||0);
-            showToast(`Preset Marks applied! Each CO = ${total}M`, 'success', 2000);
+            showToast(`Preset Marks (${val}M) applied to active COs`, 'success', 2000);
         }
+        window.fillActiveCOMarks = fillActiveCOMarks;
 
         function switchCATab(tab) {
             document.getElementById('caTabPanel1').style.display = tab === 1 ? '' : 'none';
@@ -4769,7 +4781,24 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     <p style="margin:0;font-size:12px;color:var(--text-muted);">${sd.name} | ${sd.class}-${sd.division}</p>
                 </div>`;
 
-                studentsSnap.docs.forEach(studentDoc => {
+                const teacherBatches = (window.currentUser?.role === 'teacher' && window.currentUser?.batches && window.currentUser.batches.length > 0)
+                    ? window.currentUser.batches
+                    : null;
+
+                const filteredStudentDocs = studentsSnap.docs.filter(studentDoc => {
+                    const student = studentDoc.data();
+                    if (!teacherBatches) return true;
+                    const sBatch = student.batch || student.division || '';
+                    if (!sBatch) return true;
+                    return teacherBatches.includes(sBatch);
+                });
+
+                if (filteredStudentDocs.length === 0) {
+                    formDiv.innerHTML = '<div class="alert alert-info">No students found matching your assigned batch(es) in this class.</div>';
+                    return;
+                }
+
+                filteredStudentDocs.forEach(studentDoc => {
                     const student = studentDoc.data();
                     const sid = studentDoc.id;
                     const res = resultsMap[sid];
