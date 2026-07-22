@@ -781,6 +781,79 @@
                             <tbody id="teacherAssignmentsList"></tbody>
                         </table>
                     </div>
+
+                    <!-- ====== Faculty Bulk Registration via Excel ====== -->
+                    <div class="card" style="border: 2px solid var(--primary); border-radius: 12px; position: relative; overflow: hidden;">
+                        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#4f46e5,#7c3aed,#06b6d4);"></div>
+                        <h3 style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                            <span style="font-size:20px;">📋</span> Bulk Faculty Registration via Excel
+                        </h3>
+                        <div class="alert alert-info" style="background:linear-gradient(135deg,rgba(79,70,229,0.08),rgba(6,182,212,0.08));border:1px solid rgba(79,70,229,0.2);border-radius:8px;padding:14px;">
+                            <strong>📌 Excel Format Guide:</strong><br>
+                            Upload an Excel sheet with the following <strong>7 columns</strong> (header row required):<br><br>
+                            <div style="overflow-x:auto;margin-top:8px;">
+                                <table style="font-size:12px;border-collapse:collapse;width:100%;min-width:520px;">
+                                    <thead>
+                                        <tr style="background:rgba(79,70,229,0.12);">
+                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">Faculty Name</th>
+                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">Div</th>
+                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:center;">Batch 1</th>
+                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:center;">Batch 2</th>
+                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:center;">Batch 3</th>
+                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">Email</th>
+                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">Number</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);">Dr. Smith</td>
+                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);">A</td>
+                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);text-align:center;">✓</td>
+                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);text-align:center;">✓</td>
+                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);text-align:center;"></td>
+                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);">smith@college.edu</td>
+                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);">9876543210</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <br>
+                            <strong>Rules:</strong>
+                            <ul style="margin:6px 0 0 18px;font-size:12px;line-height:1.8;">
+                                <li><strong>Email</strong> → login username &nbsp;|&nbsp; <strong>Number</strong> → login password (min 6 digits)</li>
+                                <li>At least <strong>2 of 3 batches</strong> must be ticked per faculty row</li>
+                                <li>Tick marks accepted: <code>✓</code>, <code>TRUE</code>, <code>YES</code>, <code>1</code>, <code>x</code></li>
+                                <li>Accounts are auto-approved — faculty can login immediately</li>
+                            </ul>
+                        </div>
+
+                        <div class="btn-group" style="margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+                            <button class="btn btn-success btn-sm" id="downloadFacultyTemplateBtn" onclick="downloadFacultyTemplate()" style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                                <span>⬇️</span> Download Blank Template
+                            </button>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom:14px;">
+                            <label for="facultyExcelFile" style="font-weight:600;font-size:14px;">📂 Select Excel File (.xlsx / .xls)</label>
+                            <input type="file" id="facultyExcelFile" accept=".xlsx,.xls"
+                                onchange="handleFacultyExcelUpload(event)"
+                                style="display:block;margin-top:8px;padding:8px;border:2px dashed var(--primary);border-radius:8px;width:100%;box-sizing:border-box;cursor:pointer;background:rgba(79,70,229,0.04);">
+                        </div>
+
+                        <div id="facultyExcelPreview" style="margin-bottom:14px;"></div>
+
+                        <div id="facultyImportActions" style="display:none;">
+                            <div class="btn-group" style="gap:10px;flex-wrap:wrap;">
+                                <button class="btn btn-primary" id="importFacultyBtn" onclick="importFacultyFromExcel()" style="display:flex;align-items:center;gap:6px;">
+                                    <span>🚀</span> Import Faculty Accounts
+                                </button>
+                                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('facultyExcelFile').value='';document.getElementById('facultyExcelPreview').innerHTML='';document.getElementById('facultyImportActions').style.display='none';">
+                                    ✕ Clear
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- ====== End Faculty Bulk Registration ====== -->
                 </div>
 
                 <div class="card" style="margin-top:20px;">
@@ -929,10 +1002,6 @@
                                     <option value="5">5 Marks</option>
                                     <option value="10">10 Marks</option>
                                 </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Division</label>
-                                <input type="text" id="subjectDivision" placeholder="e.g., A, B1, DIV-C">
                             </div>
                             <div class="form-group">
                                 <label>Difficulty</label>

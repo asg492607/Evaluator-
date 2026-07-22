@@ -682,7 +682,12 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             }
         }
         async function logout() {
+            // BUG-18 FIX: Clear ALL caches so stale data isn't visible on next login
             _evalExamCache = {};
+            if (typeof allStudentsData !== 'undefined') allStudentsData = [];
+            if (typeof _teacherAccountCache !== 'undefined') _teacherAccountCache = [];
+            if (typeof csvData !== 'undefined') csvData = [];
+            window._facultyImportData = [];
             try {
                 await window.signOut(window.auth);
             } catch (error) {
@@ -1174,9 +1179,24 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     q = window.query(q, window.where('action', '==', filter));
                 }
 
-                q = window.query(q, window.orderBy('timestamp', 'desc'), window.limit(100));
+                // BUG-11 FIX: Compound query (where + orderBy) may require composite index.
+                // Fallback to in-memory sort if index is missing.
+                let snapshot;
+                try {
+                    snapshot = await window.getDocs(window.query(q, window.orderBy('timestamp', 'desc'), window.limit(100)));
+                } catch (idxErr) {
+                    console.warn('[AuditLog] Index missing, falling back to in-memory sort:', idxErr.message);
+                    snapshot = await window.getDocs(window.query(q, window.limit(200)));
+                    // Sort in-memory
+                    const sorted = snapshot.docs.slice().sort((a, b) => {
+                        const ta = a.data().timestamp || '';
+                        const tb = b.data().timestamp || '';
+                        return tb.localeCompare(ta);
+                    });
+                    snapshot = { docs: sorted.slice(0, 100), empty: sorted.length === 0 };
+                }
 
-                const snapshot = await window.getDocs(q);
+                const snapshot2 = snapshot; // alias kept for reference
 
                 if (snapshot.empty) {
                     auditDiv.innerHTML = '<div class="alert alert-info">No audit logs found</div>';
@@ -1319,11 +1339,12 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             if (!year || !semester) return;
 
             try {
-                const snapshot = await getDocs(
-                    query(
-                        collection(window.db, 'subjects'),
-                        where('academicYear', '==', year),
-                        where('semester', '==', semester)
+                // BUG-02 FIX: use window. prefix — bare getDocs/query/etc are not in local scope
+                const snapshot = await window.getDocs(
+                    window.query(
+                        window.collection(window.db, 'subjects'),
+                        window.where('academicYear', '==', year),
+                        window.where('semester', '==', semester)
                     )
                 );
 
@@ -1573,6 +1594,8 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     division,
                     academicYear: document.getElementById('academicYear').value,
                     semester: document.getElementById('semester').value,
+                    // BUG-09 FIX: Attach department so HOD dashboard stats can count this student
+                    department: window.currentUser.department || '',
                     createdBy: window.currentUser.uid,
                     createdAt: new Date().toISOString(),
                     isActive: true
@@ -3168,21 +3191,42 @@ ${data.examType === 'ca' ? `<button class="btn btn-secondary btn-sm" onclick="re
             if (!tbody) return;
             tbody.innerHTML = '<tr><td colspan="7">Loading...</td></tr>';
             try {
+                // BUG-14 FIX: Filter assignments to only those belonging to coordinator's department
+                // We do this by fetching all assignments and then cross-referencing subject.department
+                const coordDept = window.currentUser?.department || window.currentUser?.departmentId || null;
                 const snapshot = await window.getDocs(window.collection(window.db, 'teacher_assignments'));
                 if (snapshot.empty) {
                     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No teachers assigned yet</td></tr>';
                     return;
                 }
                 // Parallel fetch subjects + teacher user docs
-                const asgns = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                // BUG-14 FIX: Attach fetched docs to each asgn to avoid index mismatch after dept filtering
+                let asgns = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
                 const [subjectDocs, teacherDocs] = await Promise.all([
                     Promise.all(asgns.map(a => window.getDoc(window.doc(window.db, 'subjects', a.subjectId)))),
                     Promise.all(asgns.map(a => window.getDocs(window.query(window.collection(window.db, 'users'), window.where('email', '==', a.teacherEmail), window.where('role', '==', 'teacher')))))
                 ]);
+                // Attach fetched docs to each entry so indices stay correct after filtering
+                asgns = asgns.map((data, aIdx) => ({
+                    ...data,
+                    _subjectDoc: subjectDocs[aIdx],
+                    _teacherSnap: teacherDocs[aIdx]
+                }));
+                // Filter asgns by dept if coordinator
+                if (coordDept && window.currentUser?.role === 'coordinator') {
+                    asgns = asgns.filter(data => {
+                        const subjectData = data._subjectDoc.exists() ? data._subjectDoc.data() : {};
+                        return !subjectData.department || subjectData.department === coordDept;
+                    });
+                }
                 tbody.innerHTML = '';
-                asgns.forEach((data, aIdx) => {
-                    const subjectData = subjectDocs[aIdx].exists() ? subjectDocs[aIdx].data() : {};
-                    const teacherSnap = teacherDocs[aIdx];
+                if (asgns.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No teachers assigned yet</td></tr>';
+                    return;
+                }
+                asgns.forEach((data) => {
+                    const subjectData = data._subjectDoc.exists() ? data._subjectDoc.data() : {};
+                    const teacherSnap = data._teacherSnap;
                     const teacherData = !teacherSnap.empty ? teacherSnap.docs[0].data() : null;
                     const teacherId = !teacherSnap.empty ? teacherSnap.docs[0].id : null;
                     const isActive = teacherData ? teacherData.isActive !== false : true;
@@ -3815,12 +3859,22 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     return;
                 }
 
-                let q = window.query(
-                    window.collection(window.db, 'exams'),
-                    window.where('subjectId', 'in', assignedSubjectIds)
-                );
-
-                const examsSnap = await window.getDocs(q);
+                // BUG-03 FIX: Empty array passed to 'in' query causes Firestore error.
+                // Guard is already above, but also chunk to stay within Firestore 30-item limit.
+                let examDocs = [];
+                const _chunks = [];
+                for (let ci = 0; ci < assignedSubjectIds.length; ci += 30) {
+                    _chunks.push(assignedSubjectIds.slice(ci, ci + 30));
+                }
+                for (const _chunk of _chunks) {
+                    const _snap = await window.getDocs(window.query(
+                        window.collection(window.db, 'exams'),
+                        window.where('subjectId', 'in', _chunk)
+                    ));
+                    _snap.forEach(d => examDocs.push(d));
+                }
+                // Wrap as snapshot-like object for compatibility
+                const examsSnap = { docs: examDocs, empty: examDocs.length === 0, forEach: (cb) => examDocs.forEach(cb) };
 
                 if (examsSnap.empty) {
                     container.innerHTML = '<p>No exams created yet</p>';
@@ -4245,6 +4299,15 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                             }
                         }
                     });
+                }
+
+                // BUG-06 FIX: Show helpful message when exam dropdown has no active exams
+                if (examSelect && examSelect.options.length <= 1) {
+                    const noExamOpt = document.createElement('option');
+                    noExamOpt.value = '';
+                    noExamOpt.disabled = true;
+                    noExamOpt.textContent = '— No active exams available —';
+                    examSelect.appendChild(noExamOpt);
                 }
 
                 // Load Question Assignments
@@ -4755,11 +4818,18 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div>Loading your results...</div>';
 
             try {
+                // BUG-13 FIX: Guard against missing enrollment field to prevent bad Firestore query
+                const enrollment = window.currentUser?.enrollment;
+                if (!enrollment) {
+                    resultsDiv.innerHTML = '<div class="alert alert-warning"><strong>Enrollment number not linked.</strong><br>Your account does not have an enrollment number set. Please contact your coordinator to link your account to a student record.</div>';
+                    return;
+                }
+
                 const studentsSnap = await window.getDocs(window.query(window.collection(window.db, 'students'),
-                    window.where('enrollment', '==', window.currentUser.enrollment)));
+                    window.where('enrollment', '==', enrollment)));
 
                 if (studentsSnap.empty) {
-                    resultsDiv.innerHTML = '<div class="alert alert-warning">No student record found. Please contact your coordinator to ensure your enrollment number matches.</div>';
+                    resultsDiv.innerHTML = '<div class="alert alert-warning">No student record found for enrollment <strong>' + enrollment + '</strong>. Please contact your coordinator to ensure your enrollment number matches.</div>';
                     return;
                 }
 
@@ -5354,11 +5424,22 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             if (!select) return;
 
             try {
-                const snapshot = await window.getDocs(window.query(
+                // BUG-08 FIX: Filter coordinators by HOD's department so cross-dept assignment is prevented
+                const hodDept = window.currentUser?.department || window.currentUser?.departmentId;
+                let q = window.query(
                     window.collection(window.db, 'users'),
                     window.where('role', '==', 'coordinator'),
                     window.where('approved', '==', true)
-                ));
+                );
+                if (hodDept) {
+                    q = window.query(
+                        window.collection(window.db, 'users'),
+                        window.where('role', '==', 'coordinator'),
+                        window.where('approved', '==', true),
+                        window.where('department', '==', hodDept)
+                    );
+                }
+                const snapshot = await window.getDocs(q);
 
                 select.innerHTML = '<option value="">Select Coordinator</option>';
                 snapshot.forEach(doc => {
@@ -5375,11 +5456,22 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             if (!select) return;
 
             try {
-                const snapshot = await window.getDocs(window.query(
+                // BUG-07 FIX: Filter teachers by coordinator's department to prevent cross-dept assignments
+                const coordDept = window.currentUser?.department || window.currentUser?.departmentId;
+                let q = window.query(
                     window.collection(window.db, 'users'),
                     window.where('role', '==', 'teacher'),
                     window.where('approved', '==', true)
-                ));
+                );
+                if (coordDept) {
+                    q = window.query(
+                        window.collection(window.db, 'users'),
+                        window.where('role', '==', 'teacher'),
+                        window.where('approved', '==', true),
+                        window.where('department', '==', coordDept)
+                    );
+                }
+                const snapshot = await window.getDocs(q);
 
                 select.innerHTML = '<option value="">Select Teacher</option>';
                 snapshot.forEach(doc => {
@@ -5983,7 +6075,22 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     return;
                 }
 
-                const examsQuery = (function () {
+                // BUG-15 FIX: Compound query + orderBy requires composite index — add fallback
+                let examsSnapshot;
+                try {
+                    const examsQuery = (function () {
+                        const yr = document.getElementById('academicYear')?.value || '';
+                        const sm = document.getElementById('semester')?.value || '';
+                        let q = window.collection(window.db, 'exams');
+                        let constraints = [window.where('status', '==', 'FINALIZED')];
+                        if (yr) constraints.push(window.where('academicYear', '==', yr));
+                        if (sm) constraints.push(window.where('semester', '==', sm));
+                        if (hodDept) constraints.push(window.where('department', '==', hodDept));
+                        return window.query(q, ...constraints, window.orderBy('createdAt', 'desc'));
+                    })();
+                    examsSnapshot = await window.getDocs(examsQuery);
+                } catch (idxErr) {
+                    console.warn('[HOD Results] Missing index, falling back to unordered fetch:', idxErr.message);
                     const yr = document.getElementById('academicYear')?.value || '';
                     const sm = document.getElementById('semester')?.value || '';
                     let q = window.collection(window.db, 'exams');
@@ -5991,10 +6098,12 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     if (yr) constraints.push(window.where('academicYear', '==', yr));
                     if (sm) constraints.push(window.where('semester', '==', sm));
                     if (hodDept) constraints.push(window.where('department', '==', hodDept));
-                    
-                    return window.query(q, ...constraints, window.orderBy('createdAt', 'desc'));
-                })();
-                const examsSnapshot = await window.getDocs(examsQuery)
+                    const fallbackSnap = await window.getDocs(window.query(q, ...constraints));
+                    const sortedDocs = fallbackSnap.docs.slice().sort((a, b) => {
+                        return (b.data().createdAt || '').localeCompare(a.data().createdAt || '');
+                    });
+                    examsSnapshot = { docs: sortedDocs, empty: sortedDocs.length === 0 };
+                }
 
                 if (examsSnapshot.empty) {
                     resultsContainer.innerHTML = '<p class="no-data">No finalized results available in your department.</p>';
@@ -6074,7 +6183,8 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 console.error('Error loading HOD results:', error);
                 showToast('Failed to load results: ' + error.message, 'danger');
             } finally {
-                hideLoader('coordinatorResultsLoader');
+                // BUG-15 FIX: was using wrong loader ID 'coordinatorResultsLoader' — fixed to 'hodResultsLoader'
+                hideLoader('hodResultsLoader');
             }
         }
 
@@ -6098,22 +6208,49 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 const year = document.getElementById('academicYear')?.value || '';
                 const sem = document.getElementById('semester')?.value || '';
                 
-                let examsQuery = (function() {
+                // BUG-04 FIX: Compound query + orderBy requires composite index — add in-memory sort fallback
+                let examsSnapshot;
+                try {
+                    const examsQuery = (function() {
+                        let q = window.collection(window.db, 'exams');
+                        let constraints = [window.where('status', '==', 'FINALIZED')];
+                        if (year) constraints.push(window.where('academicYear', '==', year));
+                        if (sem) constraints.push(window.where('semester', '==', sem));
+                        if (coordDept) constraints.push(window.where('department', '==', coordDept));
+                        return window.query(q, ...constraints, window.orderBy('createdAt', 'desc'));
+                    })();
+                    examsSnapshot = await window.getDocs(examsQuery);
+                } catch (idxErr) {
+                    console.warn('[Coord Results] Missing index, falling back to unordered fetch:', idxErr.message);
                     let q = window.collection(window.db, 'exams');
                     let constraints = [window.where('status', '==', 'FINALIZED')];
                     if (year) constraints.push(window.where('academicYear', '==', year));
                     if (sem) constraints.push(window.where('semester', '==', sem));
                     if (coordDept) constraints.push(window.where('department', '==', coordDept));
-                    return window.query(q, ...constraints, window.orderBy('createdAt', 'desc'));
-                })();
-                
-                const examsSnapshot = await window.getDocs(examsQuery);
+                    const fallbackSnap = await window.getDocs(window.query(q, ...constraints));
+                    const sortedDocs = fallbackSnap.docs.slice().sort((a, b) => {
+                        return (b.data().createdAt || '').localeCompare(a.data().createdAt || '');
+                    });
+                    examsSnapshot = { docs: sortedDocs, empty: sortedDocs.length === 0 };
+                }
                 let allExams = examsSnapshot.docs;
 
                 if (allExams.length === 0) {
                     resultsContainer.innerHTML = '<p class="no-data">No finalized results available for your subjects.</p>';
                     hideLoader('coordinatorResultsLoader');
                     return;
+                }
+
+                // BUG-05 FIX: Populate coordinatorResultsClassFilter dropdown with unique class values
+                const classFilterSelect = document.getElementById('coordinatorResultsClassFilter');
+                if (classFilterSelect) {
+                    const existingFilter = classFilterSelect.value;
+                    classFilterSelect.innerHTML = '<option value="">All Classes</option>';
+                    const uniqueClasses = new Set();
+                    // We'll populate after we fetch subjects below — collect them now
+                    allExams.forEach(async (examDoc) => {
+                        // Populate lazily in the loop below
+                    });
                 }
 
                 const table = document.createElement('table');
@@ -6136,6 +6273,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 resultsContainer.appendChild(table);
 
                 const tbody = document.getElementById('coordinatorResultsTableBody');
+                const _classSet = new Set(); // BUG-05: collect unique class names for filter
                 for (const examDoc of allExams) {
                     const examData = examDoc.data();
                     const examId = examDoc.id;
@@ -6146,6 +6284,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     const _subjectDataForRow = subjectDoc.exists() ? subjectDoc.data() : {};
                     const className = _subjectDataForRow.class || 'N/A';
                     const divisionName = _subjectDataForRow.division || 'N/A';
+                    if (className !== 'N/A') _classSet.add(className);
 
                     const resultsQuery = window.query(
                         window.collection(window.db, 'results'),
@@ -6183,6 +6322,20 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
  </td>
  `;
                     tbody.appendChild(row);
+                }
+
+                // BUG-05 FIX: Now populate the class filter with collected unique classes
+                const classFilterEl = document.getElementById('coordinatorResultsClassFilter');
+                if (classFilterEl && _classSet.size > 0) {
+                    const prevFilter = classFilterEl.value;
+                    classFilterEl.innerHTML = '<option value="">All Classes</option>';
+                    _classSet.forEach(cls => {
+                        const opt = document.createElement('option');
+                        opt.value = cls;
+                        opt.textContent = `Class ${cls}`;
+                        if (cls === prevFilter) opt.selected = true;
+                        classFilterEl.appendChild(opt);
+                    });
                 }
             } catch (error) {
                 console.error('Error loading Coordinator results:', error);
@@ -8491,4 +8644,442 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
         }
         window.loadDepartmentAnalytics = loadDepartmentAnalytics;
 
+        // ============================================================
+        // FACULTY BULK REGISTRATION via Excel (Coordinator Dashboard)
+        // ============================================================
+
+        /**
+         * Downloads a blank Excel template with the 7 required columns
+         * for the Faculty Bulk Registration feature.
+         */
+        function downloadFacultyTemplate() {
+            if (typeof XLSX === 'undefined') {
+                showToast('Excel library not loaded. Please refresh the page.', 'danger');
+                return;
+            }
+
+            const templateData = [
+                {
+                    'Faculty Name': 'Dr. Example Smith',
+                    'Div': 'A',
+                    'Batch 1': '✓',
+                    'Batch 2': '✓',
+                    'Batch 3': '',
+                    'Email': 'smith@college.edu',
+                    'Number': '9876543210'
+                },
+                {
+                    'Faculty Name': 'Prof. Jane Doe',
+                    'Div': 'B',
+                    'Batch 1': '✓',
+                    'Batch 2': '',
+                    'Batch 3': '✓',
+                    'Email': 'jane.doe@college.edu',
+                    'Number': '8765432109'
+                }
+            ];
+
+            const ws = XLSX.utils.json_to_sheet(templateData, {
+                header: ['Faculty Name', 'Div', 'Batch 1', 'Batch 2', 'Batch 3', 'Email', 'Number']
+            });
+
+            // Set column widths
+            ws['!cols'] = [
+                { wch: 25 }, // Faculty Name
+                { wch: 8 },  // Div
+                { wch: 10 }, // Batch 1
+                { wch: 10 }, // Batch 2
+                { wch: 10 }, // Batch 3
+                { wch: 30 }, // Email
+                { wch: 15 }  // Number
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Faculty Registration');
+            XLSX.writeFile(wb, 'Faculty_Registration_Template.xlsx');
+            showToast('✅ Template downloaded! Fill in the details and upload.', 'success', 4000);
+        }
+
+        /**
+         * Parses a raw Excel row into a structured faculty object.
+         * Returns null if the row is invalid.
+         */
+        function _parseSingleFacultyRow(row, idx) {
+            const keys = Object.keys(row);
+            const get = (variants) => {
+                const k = keys.find(k => variants.some(v => k.trim().toLowerCase() === v.toLowerCase()));
+                return k ? String(row[k]).trim() : '';
+            };
+
+            const isTicked = (val) => {
+                if (!val) return false;
+                const s = String(val).trim().toLowerCase();
+                return ['✓', 'true', 'yes', '1', 'x', 'y', '✔', '☑'].includes(s) || s === 'true';
+            };
+
+            const name = sanitizeString(get(['faculty name', 'facultyname', 'name', 'teacher name', 'teachername', 'full name', 'fullname']), 100);
+            const division = get(['div', 'division', 'section']);
+            const batch1 = isTicked(get(['batch 1', 'batch1', 'b1', 'batch-1']));
+            const batch2 = isTicked(get(['batch 2', 'batch2', 'b2', 'batch-2']));
+            const batch3 = isTicked(get(['batch 3', 'batch3', 'b3', 'batch-3']));
+            const email = get(['email', 'email address', 'emailaddress', 'mail']).toLowerCase();
+            const phone = get(['number', 'phone', 'mobile', 'contact', 'mobile no', 'phone no', 'phoneno', 'numberno']);
+
+            const errors = [];
+
+            if (!name || name === 'N/A') errors.push('Faculty Name missing');
+            if (!division) errors.push('Division (Div) missing');
+            if (!email) {
+                errors.push('Email missing');
+            } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                errors.push(`Invalid email format: ${email}`);
+            }
+            if (!phone) {
+                errors.push('Phone Number missing');
+            } else if (String(phone).replace(/\D/g, '').length < 6) {
+                errors.push(`Number too short (min 6 digits): ${phone}`);
+            }
+
+            const tickedCount = [batch1, batch2, batch3].filter(Boolean).length;
+            if (tickedCount < 2) {
+                errors.push(`Only ${tickedCount} batch(es) ticked — at least 2 required`);
+            }
+
+            const batches = [];
+            if (batch1) batches.push(1);
+            if (batch2) batches.push(2);
+            if (batch3) batches.push(3);
+
+            return {
+                rowNum: idx + 2, // +2 because row 1 is header, +1 for 0-index
+                name,
+                division,
+                batch1,
+                batch2,
+                batch3,
+                batches,
+                email,
+                phone: String(phone).replace(/\D/g, ''), // digits only for password
+                errors,
+                valid: errors.length === 0
+            };
+        }
+
+        // Internal: stores parsed faculty data between upload and import
+        window._facultyImportData = [];
+
+        /**
+         * Handles the file input change event. Reads and parses the Excel file,
+         * then renders a preview table.
+         */
+        function handleFacultyExcelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const preview = document.getElementById('facultyExcelPreview');
+            const importActions = document.getElementById('facultyImportActions');
+            window._facultyImportData = [];
+
+            if (!file.name.match(/\.(xlsx|xls)$/i)) {
+                showToast('Please select a valid Excel file (.xlsx or .xls)', 'danger');
+                event.target.value = '';
+                return;
+            }
+
+            if (typeof XLSX === 'undefined') {
+                showToast('Excel library not loaded. Please refresh the page.', 'danger');
+                return;
+            }
+
+            preview.innerHTML = '<p style="color:var(--gray-500);padding:12px;">⏳ Parsing Excel file...</p>';
+            importActions.style.display = 'none';
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+
+                    if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+                        showToast('Excel file has no sheets', 'danger');
+                        preview.innerHTML = '';
+                        return;
+                    }
+
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+                    if (!jsonData || jsonData.length === 0) {
+                        preview.innerHTML = '<div class="alert alert-danger"><strong>No data found</strong> in the Excel sheet. Ensure there is a header row and at least one data row.</div>';
+                        return;
+                    }
+
+                    // Parse all rows
+                    const parsed = jsonData.map((row, idx) => _parseSingleFacultyRow(row, idx));
+                    const valid = parsed.filter(r => r.valid);
+                    const invalid = parsed.filter(r => !r.valid);
+
+                    window._facultyImportData = valid;
+
+                    // Build preview HTML
+                    let html = '';
+
+                    if (invalid.length > 0) {
+                        html += `<div class="alert alert-warning" style="margin-bottom:12px;">
+                            <strong>⚠️ ${invalid.length} row(s) have errors</strong> and will be skipped:<br>
+                            <ul style="margin:8px 0 0 18px;font-size:12px;">
+                                ${invalid.slice(0, 8).map(r => `<li>Row ${r.rowNum}: ${r.errors.join(', ')}</li>`).join('')}
+                                ${invalid.length > 8 ? `<li>... and ${invalid.length - 8} more</li>` : ''}
+                            </ul>
+                        </div>`;
+                    }
+
+                    if (valid.length === 0) {
+                        html += '<div class="alert alert-danger"><strong>No valid faculty rows found.</strong> Please fix the errors above and re-upload.</div>';
+                        preview.innerHTML = html;
+                        importActions.style.display = 'none';
+                        return;
+                    }
+
+                    html += `<div class="alert alert-success" style="margin-bottom:12px;">
+                        <strong>✅ ${valid.length} faculty record(s)</strong> ready to import
+                        ${invalid.length > 0 ? `&nbsp;(${invalid.length} skipped)` : ''}.
+                    </div>`;
+
+                    html += `<div style="overflow-x:auto;"><table style="font-size:12px;width:100%;">
+                        <thead>
+                            <tr>
+                                <th style="padding:6px 10px;background:var(--gray-100);">#</th>
+                                <th style="padding:6px 10px;background:var(--gray-100);">Faculty Name</th>
+                                <th style="padding:6px 10px;background:var(--gray-100);">Div</th>
+                                <th style="padding:6px 10px;background:var(--gray-100);text-align:center;">Batch 1</th>
+                                <th style="padding:6px 10px;background:var(--gray-100);text-align:center;">Batch 2</th>
+                                <th style="padding:6px 10px;background:var(--gray-100);text-align:center;">Batch 3</th>
+                                <th style="padding:6px 10px;background:var(--gray-100);">Email</th>
+                                <th style="padding:6px 10px;background:var(--gray-100);">Number</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+                    const previewRows = valid.slice(0, 12);
+                    previewRows.forEach((r, i) => {
+                        html += `<tr style="border-bottom:1px solid var(--gray-100);">
+                            <td style="padding:5px 10px;color:var(--gray-500);">${i + 1}</td>
+                            <td style="padding:5px 10px;font-weight:500;">${sanitizeString(r.name, 40)}</td>
+                            <td style="padding:5px 10px;">${sanitizeString(r.division, 10)}</td>
+                            <td style="padding:5px 10px;text-align:center;">${r.batch1 ? '<span style="color:#10b981;font-weight:700;">✓</span>' : '<span style="color:var(--gray-300);">—</span>'}</td>
+                            <td style="padding:5px 10px;text-align:center;">${r.batch2 ? '<span style="color:#10b981;font-weight:700;">✓</span>' : '<span style="color:var(--gray-300);">—</span>'}</td>
+                            <td style="padding:5px 10px;text-align:center;">${r.batch3 ? '<span style="color:#10b981;font-weight:700;">✓</span>' : '<span style="color:var(--gray-300);">—</span>'}</td>
+                            <td style="padding:5px 10px;font-size:11px;">${sanitizeString(r.email, 40)}</td>
+                            <td style="padding:5px 10px;">${r.phone.substring(0, 4)}****</td>
+                        </tr>`;
+                    });
+
+                    if (valid.length > 12) {
+                        html += `<tr><td colspan="8" style="padding:8px;text-align:center;color:var(--gray-500);font-style:italic;">... and ${valid.length - 12} more</td></tr>`;
+                    }
+
+                    html += '</tbody></table></div>';
+                    preview.innerHTML = html;
+                    importActions.style.display = 'block';
+
+                } catch (err) {
+                    console.error('Faculty Excel parse error:', err);
+                    showToast('Failed to parse Excel file. Please check the format.', 'danger');
+                    preview.innerHTML = '<div class="alert alert-danger">Failed to parse the file. Make sure it is a valid .xlsx file.</div>';
+                }
+            };
+            reader.onerror = function () {
+                showToast('Failed to read Excel file', 'danger');
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        /**
+         * Iterates over parsed faculty data and creates Firebase Auth + Firestore accounts
+         * for each valid row. Uses the secondary auth instance to avoid signing out the coordinator.
+         */
+        async function importFacultyFromExcel() {
+            const data = window._facultyImportData || [];
+            if (data.length === 0) {
+                showToast('No valid faculty data to import. Please upload an Excel file first.', 'warning');
+                return;
+            }
+
+            if (!window.currentUser || !['coordinator', 'hod'].includes(window.currentUser.role)) {
+                showToast('Access Denied: Only Coordinator or HOD can bulk-import faculty.', 'danger');
+                return;
+            }
+
+            const importBtn = document.getElementById('importFacultyBtn');
+            if (importBtn) {
+                importBtn.disabled = true;
+                importBtn.innerHTML = '<span>⏳</span> Importing...';
+            }
+
+            const results = [];
+            let successCount = 0;
+            let failCount = 0;
+
+            window.showLoadingMessage(`Importing faculty (0 / ${data.length})...`);
+
+            for (let i = 0; i < data.length; i++) {
+                const faculty = data[i];
+                window.showLoadingMessage(`Importing faculty (${i + 1} / ${data.length}): ${faculty.name}...`);
+
+                try {
+                    // Check for duplicate email in Firestore
+                    const dupCheck = await window.getDocs(
+                        window.query(
+                            window.collection(window.db, 'users'),
+                            window.where('email', '==', faculty.email)
+                        )
+                    );
+
+                    if (!dupCheck.empty) {
+                        results.push({ ...faculty, status: 'SKIPPED', reason: 'Email already exists in system' });
+                        failCount++;
+                        continue;
+                    }
+
+                    // Create Firebase Auth account using secondary auth (preserves coordinator session)
+                    const authToUse = window.secondaryAuth || window.auth;
+                    const userCredential = await window.createUserWithEmailAndPassword(authToUse, faculty.email, faculty.phone);
+                    const newUser = userCredential.user;
+
+                    // Build Firestore user document
+                    const userData = {
+                        name: faculty.name,
+                        email: faculty.email,
+                        role: 'teacher',
+                        division: faculty.division,
+                        batches: faculty.batches,
+                        batch1: faculty.batch1,
+                        batch2: faculty.batch2,
+                        batch3: faculty.batch3,
+                        phone: faculty.phone,
+                        department: window.currentUser.department || '',
+                        approved: true,
+                        approvalStatus: 'approved',
+                        adminCreated: true,
+                        bulkImported: true,
+                        examRestricted: false,
+                        isActive: true,
+                        isDeleted: false,
+                        createdAt: new Date().toISOString(),
+                        createdBy: window.currentUser.uid,
+                        createdByName: window.currentUser.name,
+                        createdByRole: window.currentUser.role,
+                        lastModifiedBy: window.currentUser.uid,
+                        lastModifiedAt: new Date().toISOString(),
+                        modificationHistory: []
+                    };
+
+                    await window.setDoc(window.doc(window.db, 'users', newUser.uid), userData);
+
+                    // Sign out secondary auth to clean up the session
+                    if (window.secondaryAuth) {
+                        await window.signOut(window.secondaryAuth);
+                    }
+
+                    // Audit log entry
+                    await window.addDoc(window.collection(window.db, 'audit_logs'), {
+                        action: 'BULK_IMPORT_FACULTY',
+                        createdUserId: newUser.uid,
+                        createdUserEmail: faculty.email,
+                        createdUserName: faculty.name,
+                        createdUserRole: 'teacher',
+                        division: faculty.division,
+                        batches: faculty.batches,
+                        performedBy: window.currentUser.uid,
+                        performedByName: window.currentUser.name,
+                        performedByRole: window.currentUser.role,
+                        timestamp: new Date().toISOString(),
+                        metadata: {
+                            department: window.currentUser.department || null,
+                            bulkImport: true
+                        }
+                    });
+
+                    results.push({ ...faculty, status: 'SUCCESS', reason: '', uid: newUser.uid });
+                    successCount++;
+
+                } catch (err) {
+                    let reason = err.message || 'Unknown error';
+                    if (err.code === 'auth/email-already-in-use') reason = 'Email already registered in Firebase Auth';
+                    else if (err.code === 'auth/weak-password') reason = 'Password (number) is too weak (< 6 chars)';
+                    else if (err.code === 'auth/invalid-email') reason = 'Invalid email format';
+
+                    results.push({ ...faculty, status: 'FAILED', reason });
+                    failCount++;
+                    console.error(`Faculty import failed for ${faculty.email}:`, err);
+                }
+            }
+
+            window.hideLoadingMessage();
+
+            // Reset UI
+            if (importBtn) {
+                importBtn.disabled = false;
+                importBtn.innerHTML = '<span>🚀</span> Import Faculty Accounts';
+            }
+            window._facultyImportData = [];
+
+            // Show summary toast
+            const msg = `Import complete: ${successCount} created, ${failCount} failed/skipped.`;
+            showToast(successCount > 0 ? `✅ ${msg}` : `⚠️ ${msg}`, successCount > 0 ? 'success' : 'warning', 7000);
+
+            // Refresh teacher list
+            if (typeof loadTeacherAccountList === 'function') loadTeacherAccountList();
+
+            // Offer to download the report
+            if (results.length > 0) {
+                setTimeout(() => exportFacultyRegistrationReport(results), 800);
+            }
+        }
+
+        /**
+         * Exports a summary Excel report of the bulk import results.
+         * Called automatically after importFacultyFromExcel completes.
+         */
+        function exportFacultyRegistrationReport(results) {
+            if (!results || results.length === 0) return;
+
+            if (typeof XLSX === 'undefined') {
+                showToast('Cannot export report: Excel library not loaded.', 'danger');
+                return;
+            }
+
+            const reportData = results.map(r => ({
+                'Faculty Name': r.name || '',
+                'Division': r.division || '',
+                'Batch 1': r.batch1 ? '✓' : '',
+                'Batch 2': r.batch2 ? '✓' : '',
+                'Batch 3': r.batch3 ? '✓' : '',
+                'Email': r.email || '',
+                'Status': r.status || '',
+                'Reason / Notes': r.reason || (r.status === 'SUCCESS' ? 'Account created successfully' : '')
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(reportData, {
+                header: ['Faculty Name', 'Division', 'Batch 1', 'Batch 2', 'Batch 3', 'Email', 'Status', 'Reason / Notes']
+            });
+            ws['!cols'] = [
+                { wch: 25 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 30 }, { wch: 12 }, { wch: 40 }
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Import Report');
+            const fname = `Faculty_Import_Report_${new Date().toISOString().slice(0,10)}.xlsx`;
+            XLSX.writeFile(wb, fname);
+            showToast('📊 Import report downloaded!', 'info', 3000);
+        }
+
+        // Expose new faculty registration functions globally
+        window.downloadFacultyTemplate = downloadFacultyTemplate;
+        window.handleFacultyExcelUpload = handleFacultyExcelUpload;
+        window.importFacultyFromExcel = importFacultyFromExcel;
+        window.exportFacultyRegistrationReport = exportFacultyRegistrationReport;
+
         console.log("Evaluator v1.0.9: App logic initialized and bridged.");
+
