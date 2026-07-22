@@ -13,14 +13,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     
-    <!-- Offline Libraries -->
-    <script src="lib/jspdf.umd.min.js"></script>
-    <script src="lib/pdf.min.js"></script>
-    <script src="lib/xlsx.full.min.js"></script>
+    <!-- Core UI & Processing Libraries (CDN with local fallback) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" onerror="this.onerror=null;this.src='lib/jspdf.umd.min.js'"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js" onerror="this.onerror=null;this.src='lib/pdf.min.js'"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" onerror="this.onerror=null;this.src='lib/xlsx.full.min.js'"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="lib/firebase-app-compat.js"></script>
-    <script src="lib/firebase-auth-compat.js"></script>
-    <script src="lib/firebase-firestore-compat.js"></script>
+    
+    <!-- Firebase SDK (Official Google CDN) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js" onerror="this.onerror=null;this.src='lib/firebase-app-compat.js'"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js" onerror="this.onerror=null;this.src='lib/firebase-auth-compat.js'"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js" onerror="this.onerror=null;this.src='lib/firebase-firestore-compat.js'"></script>
 
     <!-- App Identity & Styling -->
     <link rel="stylesheet" href="styles.css">
@@ -464,6 +466,17 @@
                                     <option value="ca">CA</option>
                                 </select>
                             </div>
+                            <div class="filter-group" style="display:inline-block;min-width:160px;margin-right:12px;">
+                                <label>Filter by Marks:</label>
+                                <select id="hodResultsMarksFilter" class="form-control" onchange="filterResultsByMarks('hodResultsContainer', this.value)">
+                                    <option value="all">📊 All Marks</option>
+                                    <option value="above20">🟢 > 20 Marks</option>
+                                    <option value="above15">🔵 > 15 Marks</option>
+                                    <option value="above10">🟡 > 10 Marks</option>
+                                    <option value="above5">🟠 > 5 Marks</option>
+                                    <option value="below5">🔴 ≤ 5 Marks</option>
+                                </select>
+                            </div>
                             <button class="btn btn-primary" onclick="loadResultsForHOD()" style="margin-top:24px;">
                                 <span>&#128260;</span> Refresh Results
                             </button>
@@ -683,11 +696,11 @@
                 <div id="coordExams" class="section">
                     <div class="card">
                         <h3>Create Exam</h3>
-                        <div class="btn-group">
-                            <button class="btn btn-primary" onclick="openExamModal('standard')">Create Standard
-                                Exam</button>
-                            <button class="btn btn-success" onclick="openExamModal('ca')">Create CA Exam</button>
-                            <button class="btn btn-info" onclick="openExamModal('ese')" style="background:#6366f1;color:#fff;border-color:#4f46e5;">Create ESE Exam</button>
+                        <div class="btn-group" style="display:flex;gap:10px;flex-wrap:wrap;">
+                            <button class="btn btn-success" onclick="openExamModal('ca_unit1')">Create CA: IPA 1 (CO1-3, 12m)</button>
+                            <button class="btn btn-success" style="background:#059669;" onclick="openExamModal('ca_unit2')">Create CA: IPA 2 (CO4-5, 8m)</button>
+                            <button class="btn btn-info" onclick="openExamModal('ese')" style="background:#6366f1;color:#fff;border-color:#4f46e5;">Create End Sem Exam (CO1-5)</button>
+                            <button class="btn btn-secondary" onclick="openExamModal('standard')">Custom Exam</button>
                         </div>
                     </div>
                     <div class="card">
@@ -912,6 +925,18 @@
                                     <option value="">All Types</option>
                                     <option value="standard">Standard</option>
                                     <option value="ca">CA</option>
+                                </select>
+                            </div>
+                            <div class="filter-group" style="display:inline-block;min-width:160px;margin-right:12px;">
+                                <label>Filter by Marks:</label>
+                                <select id="coordinatorResultsMarksFilter" class="form-control"
+                                    onchange="filterResultsByMarks('coordinatorResultsContainer', this.value); filterResultsByMarks('resultsTable', this.value);">
+                                    <option value="all">📊 All Marks</option>
+                                    <option value="above20">🟢 > 20 Marks</option>
+                                    <option value="above15">🔵 > 15 Marks</option>
+                                    <option value="above10">🟡 > 10 Marks</option>
+                                    <option value="above5">🟠 > 5 Marks</option>
+                                    <option value="below5">🔴 ≤ 5 Marks</option>
                                 </select>
                             </div>
                             <button class="btn btn-primary" onclick="loadResultsForCoordinator()"
@@ -1174,13 +1199,13 @@
             <div class="dashboard-header">
                 <h2>Teacher Dashboard</h2>
                 <div class="user-info">
-                    <span class="role-badge">Teacher</span>
+                    <span class="role-badge" id="teacherRoleBadge">Teacher</span>
                     <button id="teacherSyncBtn" class="btn btn-warning hidden sync-btn" style="width:auto;margin:0 10px;padding:8px 16px;background:#f59e0b;color:white;border:none;" onclick="OfflineSyncManager.processQueue()">Sync Pending</button>
                     <button class="btn btn-secondary" style="width:auto;margin:0;padding:8px 16px;" onclick="logout()">Logout</button>
                 </div>
             </div>
             <div class="dashboard-nav">
-                <button class="nav-btn active" onclick="showTeacherSection('assignments',this)">My Assignments</button>
+                <button class="nav-btn active" onclick="showTeacherSection('assignments',this)">Dashboard & Analytics</button>
                 <button class="nav-btn" onclick="showTeacherSection('students',this)">Students</button>
                 <button class="nav-btn" onclick="showTeacherSection('evaluate',this)">Evaluate</button>
                 <button class="nav-btn" onclick="showTeacherSection('results',this)">Results</button>
@@ -1190,10 +1215,45 @@
 
 
                 <div id="teacherAssignments" class="section active">
+                    <div class="card" style="margin-bottom:20px;">
+                        <h3 style="display:flex;align-items:center;gap:8px;">
+                            <span>📊</span> Performance & Marks Analytics Breakdown
+                        </h3>
+                        <p style="color:var(--gray-500);font-size:13px;margin-bottom:16px;">
+                            Real-time student performance breakdown across all evaluated examinations:
+                        </p>
+                        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
+                            <div class="stat-card" style="background:#ecfdf5;border-color:#6ee7b7;text-align:center;">
+                                <h4 style="color:#065f46;margin:0 0 6px 0;font-size:13px;">> 20 Marks</h4>
+                                <div class="value" id="teacherAbove20Count" style="color:#047857;font-size:24px;font-weight:800;">0</div>
+                                <div style="font-size:11px;color:#059669;margin-top:4px;" id="teacherAbove20Pct">0%</div>
+                            </div>
+                            <div class="stat-card" style="background:#eff6ff;border-color:#93c5fd;text-align:center;">
+                                <h4 style="color:#1e40af;margin:0 0 6px 0;font-size:13px;">> 15 Marks</h4>
+                                <div class="value" id="teacherAbove15Count" style="color:#1d4ed8;font-size:24px;font-weight:800;">0</div>
+                                <div style="font-size:11px;color:#2563eb;margin-top:4px;" id="teacherAbove15Pct">0%</div>
+                            </div>
+                            <div class="stat-card" style="background:#fefce8;border-color:#fde047;text-align:center;">
+                                <h4 style="color:#854d0e;margin:0 0 6px 0;font-size:13px;">> 10 Marks</h4>
+                                <div class="value" id="teacherAbove10Count" style="color:#a16207;font-size:24px;font-weight:800;">0</div>
+                                <div style="font-size:11px;color:#ca8a04;margin-top:4px;" id="teacherAbove10Pct">0%</div>
+                            </div>
+                            <div class="stat-card" style="background:#fff7ed;border-color:#ffedd5;text-align:center;">
+                                <h4 style="color:#9a3412;margin:0 0 6px 0;font-size:13px;">> 5 Marks</h4>
+                                <div class="value" id="teacherAbove5Count" style="color:#c2410c;font-size:24px;font-weight:800;">0</div>
+                                <div style="font-size:11px;color:#ea580c;margin-top:4px;" id="teacherAbove5Pct">0%</div>
+                            </div>
+                            <div class="stat-card" style="background:#fef2f2;border-color:#fca5a5;text-align:center;">
+                                <h4 style="color:#991b1b;margin:0 0 6px 0;font-size:13px;">≤ 5 Marks</h4>
+                                <div class="value" id="teacherBelow5Count" style="color:#dc2626;font-size:24px;font-weight:800;">0</div>
+                                <div style="font-size:11px;color:#ef4444;margin-top:4px;" id="teacherBelow5Pct">0%</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card">
                         <h3>My Subject Assignments</h3>
-                        <div class="alert alert-info"><strong>Tip:</strong> Each subject below is assigned to you by the
-                            Coordinator. Click the nav tabs above to manage students, create exams, and evaluate.</div>
+                        <div class="alert alert-info"><strong>Tip:</strong> Each subject below is assigned to you by the Coordinator. Use the tabs above to manage students, evaluate, and view results.</div>
                         <table>
                             <thead>
                                 <tr>
@@ -1331,6 +1391,15 @@
                                 id="teacherExportBtn" style="width:auto;margin:0;">Export Results to Excel</button>
                             <button class="btn btn-primary btn-sm" onclick="printAllMarksheets()"
                                 id="teacherPrintBtn" style="width:auto;margin:0;">Print Marksheets</button>
+                            <select id="teacherResultsMarksFilter" onchange="filterResultsByMarks('teacherResultsContainer', this.value)"
+                                style="width:auto;min-width:160px;padding:8px 12px;border:2px solid #e5e7eb;border-radius:8px;font-size:13px;background:#fff;font-weight:600;color:var(--text-main);">
+                                <option value="all">📊 All Marks</option>
+                                <option value="above20">🟢 > 20 Marks</option>
+                                <option value="above15">🔵 > 15 Marks</option>
+                                <option value="above10">🟡 > 10 Marks</option>
+                                <option value="above5">🟠 > 5 Marks</option>
+                                <option value="below5">🔴 ≤ 5 Marks</option>
+                            </select>
                             <input type="text" id="teacherResultSearch" placeholder="Search by name or enrollment..."
                                 oninput="filterTeacherResults()"
                                 style="flex:1;min-width:180px;padding:8px 12px;border:2px solid #e5e7eb;border-radius:8px;font-size:13px;">

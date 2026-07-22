@@ -715,6 +715,15 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     break;
                 case 'teacher':
                     document.getElementById('teacherDashboard').classList.add('active');
+                    const teacherBadge = document.getElementById('teacherRoleBadge');
+                    if (teacherBadge && window.currentUser) {
+                        let text = 'Teacher';
+                        if (window.currentUser.division) text += ` | Div: ${window.currentUser.division}`;
+                        if (window.currentUser.batches && window.currentUser.batches.length > 0) {
+                            text += ` | Batches: B${window.currentUser.batches.join(', B')}`;
+                        }
+                        teacherBadge.textContent = text;
+                    }
                     loadTeacherData();
                     break;
                 case 'student':
@@ -2416,8 +2425,7 @@ Template
             try {
                 // Initialize pdf.js worker - force a more robust loading pattern
                 if (window.pdfjsLib) {
-                    const workerUrl = 'lib/pdf.worker.min.js';
-                    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
                 } else {
                     throw new Error('PDF library (pdf.js) not found. Please refresh.');
                 }
@@ -2673,21 +2681,23 @@ Template
             const marksInput = document.getElementById('teacherCAMaxMarksCA');
             const totalLabel = document.getElementById('caTotalLabel');
 
-            if (type === 'unit1') {
-                nameInput.value = 'Continuous Assessment - JUnit I';
-                coCountInput.value = 3; // CO1, CO2, CO3
-                marksInput.value = 4;
-            } else if (type === 'unit2') {
-                nameInput.value = 'Continuous Assessment - JUnit II';
-                coCountInput.value = 2; // CO4, CO5
-                marksInput.value = 4;
+            if (type === 'unit1' || type === 'ipa1') {
+                if (nameInput) nameInput.value = 'Continuous Assessment - IPA 1 (CO1, CO2, CO3)';
+                if (coCountInput) coCountInput.value = 3; // CO1, CO2, CO3
+                if (marksInput) marksInput.value = 4;
+                showToast('Applied IPA 1 Preset: CO1, CO2, CO3 @ 4m each (Total: 12m)', 'success', 3000);
+            } else if (type === 'unit2' || type === 'ipa2') {
+                if (nameInput) nameInput.value = 'Continuous Assessment - IPA 2 (CO4, CO5)';
+                if (coCountInput) coCountInput.value = 2; // CO4, CO5
+                if (marksInput) marksInput.value = 4;
+                showToast('Applied IPA 2 Preset: CO4, CO5 @ 4m each (Total: 8m)', 'success', 3000);
             } else if (type === 'full') {
-                nameInput.value = 'Continuous Assessment - Full (CO1-5)';
-                coCountInput.value = 5;
-                marksInput.value = 4;
+                if (nameInput) nameInput.value = 'Continuous Assessment - Full (CO1 to CO5)';
+                if (coCountInput) coCountInput.value = 5;
+                if (marksInput) marksInput.value = 4;
+                showToast('Applied Full CA Preset: CO1 to CO5 @ 4m each (Total: 20m)', 'success', 3000);
             }
-            if (totalLabel) totalLabel.textContent = coCountInput.value * marksInput.value;
-            showToast(`Applied ${type.toUpperCase()} template`, 'success', 1500);
+            if (totalLabel && coCountInput && marksInput) totalLabel.textContent = coCountInput.value * marksInput.value;
         }
         window.applyCATemplate = applyCATemplate;
 
@@ -2714,9 +2724,9 @@ Template
             
             if (isESE) {
                 subsetCOs = [1, 2, 3, 4, 5];
-            } else if (nameLower.includes('junit i') || nameLower.includes('unit 1')) {
+            } else if (nameLower.includes('ipa 1') || nameLower.includes('junit i') || nameLower.includes('unit 1')) {
                 subsetCOs = [1, 2, 3];
-            } else if (nameLower.includes('junit ii') || nameLower.includes('unit 2')) {
+            } else if (nameLower.includes('ipa 2') || nameLower.includes('junit ii') || nameLower.includes('unit 2')) {
                 subsetCOs = [4, 5];
             }
 
@@ -3232,12 +3242,15 @@ ${data.examType === 'ca' ? `<button class="btn btn-secondary btn-sm" onclick="re
                     const isActive = teacherData ? teacherData.isActive !== false : true;
                     const row = tbody.insertRow();
                     if (!isActive) row.classList.add('teacher-row-disabled');
+                    const batchTag = data.batches && data.batches.length > 0 
+                        ? `<br><span class="badge badge-info" style="font-size:10px;margin-top:2px;">Batches: B${data.batches.join(', B')}</span>` 
+                        : (teacherData?.batches && teacherData.batches.length > 0 ? `<br><span class="badge badge-info" style="font-size:10px;margin-top:2px;">Batches: B${teacherData.batches.join(', B')}</span>` : '');
                     row.innerHTML = `
  <td><strong>${teacherData?.name || data.teacherEmail.split('@')[0]}</strong></td>
 <td style="font-size:12px;">${data.teacherEmail}</td>
 <td>${subjectData.name || 'N/A'}</td>
 <td>${data.class}</td>
-<td>${data.division}</td>
+<td>${data.division}${batchTag}</td>
 <td>${isActive ? '<span class="account-status-on">ON</span>' : '<span class="account-status-off">OFF</span>'}</td>
 <td style="white-space:nowrap;">
 ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onclick="toggleTeacherAccount('${teacherId}','${data.teacherEmail}',${isActive})">${isActive ? 'Disable' : 'Enable'}</button> ` : ''}
@@ -3680,37 +3693,37 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             const typeSelect = document.getElementById('teacherExamType');
             const nameInput = document.getElementById('teacherExamName');
             
-            if (template.startsWith('ca_')) {
+            if (template.startsWith('ca_') || template.startsWith('ipa')) {
                 typeSelect.value = 'ca';
                 toggleTeacherExamType();
                 const coInput = document.getElementById('teacherCOCount');
-                const caInput = document.getElementById('teacherCACount');
                 const marksInput = document.getElementById('teacherCAMaxMarks');
                 
-                if (template === 'ca_unit1') {
-                    nameInput.value = 'Continuous Assessment - JUnit I';
+                if (template === 'ca_unit1' || template === 'ipa1') {
+                    nameInput.value = 'Continuous Assessment - IPA 1 (CO1, CO2, CO3)';
                     coInput.value = 3;
                     marksInput.value = 4;
-                    window.showToast('Applied JUnit I Template: CO1-3 @ 4m each', 'info');
-                } else if (template === 'ca_unit2') {
-                    nameInput.value = 'Continuous Assessment - JUnit II';
+                    window.showToast('Applied IPA 1 Template: CO1-3 @ 4m each (Total: 12m)', 'info');
+                } else if (template === 'ca_unit2' || template === 'ipa2') {
+                    nameInput.value = 'Continuous Assessment - IPA 2 (CO4, CO5)';
                     coInput.value = 2;
                     marksInput.value = 4;
-                    window.showToast('Applied JUnit II Template: CO4-5 @ 4m each', 'info');
+                    window.showToast('Applied IPA 2 Template: CO4-5 @ 4m each (Total: 8m)', 'info');
                 } else if (template === 'ca_full') {
-                    nameInput.value = 'Continuous Assessment - (JUnit I & II)';
+                    nameInput.value = 'Continuous Assessment - Full (CO1-5)';
                     coInput.value = 5;
                     marksInput.value = 4;
-                    window.showToast('Applied Full CA Template: CO1-5 @ 4m each', 'info');
+                    window.showToast('Applied Full CA Template: CO1-5 @ 4m each (Total: 20m)', 'info');
                 }
-            } else if (template === 'ese_standard') {
+            } else if (template === 'ese_standard' || template === 'ese') {
                 typeSelect.value = 'ese';
                 toggleTeacherExamType();
-                nameInput.value = 'End Semester Exam (ESE)';
+                nameInput.value = 'End Semester Examination (ESE)';
                 const marksInput = document.getElementById('teacherESEMarks');
-                marksInput.value = 5;
-                document.getElementById('eseTotalLabel').textContent = 25;
-                window.showToast('Applied ESE Template: 5 Questions @ 5m each', 'success');
+                if (marksInput) marksInput.value = 5;
+                const eseLbl = document.getElementById('eseTotalLabel');
+                if (eseLbl) eseLbl.textContent = 25;
+                window.showToast('Applied ESE Template: CO1 to CO5 (1 Question each)', 'success');
             }
         };
 
@@ -3789,7 +3802,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     
                     // Logic based on diagram: JUnit I (CO1-3) or JUnit II (CO4-5) or Full
                     let startCO = 1;
-                    if (nameLower.includes('junit ii') || nameLower.includes('unit 2')) {
+                    if (nameLower.includes('ipa 2') || nameLower.includes('junit ii') || nameLower.includes('unit 2')) {
                         startCO = 4;
                     }
 
@@ -4222,12 +4235,15 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                         importClassSelect.appendChild(option);
                     }
 
+                    const teacherBatchTag = data.batches && data.batches.length > 0 
+                        ? `<br><small class="badge badge-success" style="font-size:10px;margin-top:2px;">Batches: B${data.batches.join(', B')}</small>`
+                        : (window.currentUser?.batches && window.currentUser.batches.length > 0 ? `<br><small class="badge badge-success" style="font-size:10px;margin-top:2px;">Batches: B${window.currentUser.batches.join(', B')}</small>` : '');
                     const row = tbody.insertRow();
                     row.innerHTML = `
  <td><strong>${subjectData.name || 'N/A'}</strong></td>
 <td>${subjectData.code || '-'}</td>
 <td>${data.class}</td>
-<td>${data.division}</td>
+<td>${data.division}${teacherBatchTag}</td>
 <td><span class="badge badge-info">${studentsSnap.size}</span></td>
 <td>${subjectData.academicYear || '-'}</td>
 <td>${subjectData.semester || '-'}</td> `;
@@ -4339,6 +4355,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 tbody.innerHTML = '<tr><td colspan="4">Error loading data: ' + error.message + '</td></tr>';
                 showToast('Error loading dashboard: ' + error.message, 'danger');
             }
+            if (typeof loadMarksAnalytics === 'function') loadMarksAnalytics();
         }
         async function loadTeacherExamsDropdown() {
             const subjectId = document.getElementById('teacherSubjectSelect').value;
@@ -4517,13 +4534,19 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                         co.criteria.forEach((c, cIdx) => {
                             const input = document.querySelector(`#input-${studentId}-${coIdx}-${cIdx}`);
                             const val = input?.value;
-                            const key = `CO${coIdx + 1}_C${cIdx + 1}`;
-                            if (val === '' || val == null) { coMarks[key] = null; allFilled = false; }
-                            else { 
+                            const key = `${co.name}_C${cIdx + 1}`;
+                            const legacyKey = `CO${coIdx + 1}_C${cIdx + 1}`;
+                            if (val === '' || val == null) { 
+                                coMarks[key] = null; 
+                                coMarks[legacyKey] = null; 
+                                allFilled = false; 
+                            } else { 
                                 const m = parseFloat(val); 
-                                if (m < 0) { showToast(`Marks cannot be negative. student ${studentId}`, 'danger'); throw new Error('Negative marks'); }
+                                if (m < 0) { showToast(`Marks cannot be negative. Student ${studentId}`, 'danger'); throw new Error('Negative marks'); }
                                 if (m > c.maxMarks) { showToast(`Marks for ${co.name} exceed max (${c.maxMarks}). Student: ${studentId}`, 'danger'); throw new Error('Marks exceeded'); }
-                                coMarks[key] = m; totalMarks += m; 
+                                coMarks[key] = m; 
+                                coMarks[legacyKey] = m; 
+                                totalMarks += m; 
                             }
                         });
                     });
@@ -4537,13 +4560,9 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 let criteriaCount = examType === 'standard' ? examData.criteria.length :
                     examData.courseOutcomes.reduce((sum, co) => sum + co.criteria.length, 0);
 
-                if (examType === 'ca' && criteriaCount > 0) {
-                    finalMarks = totalMarks / criteriaCount;
-                }
-
                 finalMarks = Math.round(finalMarks);
 
-                const percentage = (!isAbsent && maxTotalMarks > 0) ? window.calculatePercentage(finalMarks, maxTotalMarks / (examType === 'ca' ? criteriaCount : 1)) : 0;
+                const percentage = (!isAbsent && maxTotalMarks > 0) ? (finalMarks / maxTotalMarks) * 100 : 0;
                 const grade = isAbsent ? 'AB' : calculateGrade(percentage);
 
                 if (!isAbsent && examType === 'ca') {
@@ -4774,14 +4793,18 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                             </div>`;
 
                     if(examData.examType === 'ca' || examData.examType === 'ese') {
-                        html += `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">`;
+                        html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(85px,1fr));gap:12px;margin-top:10px;">`;
                         examData.courseOutcomes.forEach((co, cidx) => {
-                            const val = res?.coMarks?.[`CO${cidx+1}_C1`] || '';
-                            html += `<div style="text-align:center;">
-                                <label style="font-size:10px;font-weight:700;display:block;">${co.name}</label>
-                                <input type="number" class="eval-input-ca" id="input-${sid}-${cidx}-0" step="0.5" value="${val}"
-                                    style="width:100%;text-align:center;padding:8px;border:1px solid #d1d5db;border-radius:8px;">
-                                <div style="font-size:9px;color:#6b7280;">Max: ${co.criteria[0]?.maxMarks || 0}</div>
+                            const coKey = `${co.name}_C1`;
+                            const legacyKey = `CO${cidx+1}_C1`;
+                            const val = res?.coMarks?.[coKey] ?? res?.coMarks?.[legacyKey] ?? '';
+                            const maxMarks = co.criteria?.[0]?.maxMarks || 4;
+                            html += `<div style="text-align:center;background:#fff;padding:10px;border-radius:8px;border:1px solid #cbd5e1;">
+                                <label style="font-size:12px;font-weight:700;display:block;color:#1e293b;margin-bottom:4px;">${co.name}</label>
+                                <input type="number" class="eval-input-ca" id="input-${sid}-${cidx}-0" step="0.5" min="0" max="${maxMarks}" value="${val}"
+                                    oninput="markAsModified('${sid}')"
+                                    style="width:100%;text-align:center;padding:8px;font-weight:600;font-size:14px;border:1px solid #94a3b8;border-radius:6px;">
+                                <div style="font-size:10px;color:#64748b;margin-top:4px;">Max: ${maxMarks}</div>
                             </div>`;
                         });
                         html += `</div>`;
@@ -5478,7 +5501,9 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     const data = doc.data();
                     const option = document.createElement('option');
                     option.value = data.email;
-                    option.textContent = `${data.name} (${data.email}) - ${data.department || 'No Dept'}`;
+                    const divStr = data.division ? ` [Div: ${data.division}]` : '';
+                    const batchStr = (data.batches && data.batches.length > 0) ? ` [Batches: B${data.batches.join(', B')}]` : '';
+                    option.textContent = `${data.name} (${data.email})${divStr}${batchStr} - ${data.department || 'No Dept'}`;
                     select.appendChild(option);
                 });
             } catch (error) { /* silent */ }
@@ -5556,64 +5581,80 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 </div>
 <button class="btn btn-success btn-sm" onclick="exportAllStudentsResultsCSV('${examId}')">Export All Results to CSV</button>
 </div>
+<div class="table-container" style="overflow-x:auto;">
 <table>
 <thead>
 <tr>
 <th>Sr. No.</th>
-<th>Roll No.</th>
-<th>Enrollment</th>
 <th>Student Name</th>
-<th>Email</th>
-<th>Phone</th>`;
+<th>Enrollment Number</th>
+<th>Batch</th>
+<th>Date of Exam</th>`;
 
-                if (examData.examType === 'ca') {
-                    examData.courseOutcomes.forEach((co, idx) => {
-                        html += `<th>${co.name}<br>Average</th>`;
+                if (examData.examType === 'ca' || examData.examType === 'ese') {
+                    (examData.courseOutcomes || []).forEach(co => {
+                        const maxM = co.criteria?.[0]?.maxMarks || 4;
+                        html += `<th>${co.name}<br><small>(Max: ${maxM})</small></th>`;
                     });
-                    html += `<th>Overall<br>Average</th><th>Status</th>`;
+                    html += `<th>Total Marks<br><small>(Max: ${examData.totalMarks || 0})</small></th><th>Status</th>`;
                 } else {
-                    examData.criteria.forEach(c => {
-                        html += `<th>${c.name}<br>(Max: ${c.maxMarks})</th>`;
+                    (examData.criteria || []).forEach(c => {
+                        html += `<th>${c.name}<br><small>(Max: ${c.maxMarks})</small></th>`;
                     });
-                    html += `<th>Total<br>Marks</th><th>Status</th>`;
+                    html += `<th>Total Marks<br><small>(Max: ${examData.totalMarks || 0})</small></th><th>Status</th>`;
                 }
 
                 html += `</tr></thead><tbody>`;
 
                 let srNo = 1;
+                const examDateStr = examData.createdAt ? new Date(examData.createdAt).toLocaleDateString() : '-';
+
                 studentsSnap.forEach(studentDoc => {
                     const student = studentDoc.data();
                     const result = resultsMap[studentDoc.id];
+                    const studentBatch = student.batch || student.division || '-';
+                    const evalDate = result?.evaluatedAt ? new Date(result.evaluatedAt).toLocaleDateString() : examDateStr;
+                    const totalVal = result ? (result.absent ? 'AB' : (result.totalMarks !== undefined && result.totalMarks !== -1 ? result.totalMarks : 0)) : '';
 
-                    html += `<tr>
+                    html += `<tr data-total-marks="${totalVal}">
 <td>${srNo}</td>
-<td>${student.rollNo || '-'}</td>
-<td>${student.enrollment}</td>
-<td style="font-weight: 500;">${sanitizeString(student.name)}</td>
-<td style="font-size: 12px;">${student.email || '-'}</td>
-<td style="font-size: 12px;">${student.phone || '-'}</td>`;
+<td style="font-weight: 600;">${sanitizeString(student.name)}</td>
+<td style="font-family:monospace;font-size:12px;">${student.enrollment}</td>
+<td><span class="badge badge-info">${studentBatch}</span></td>
+<td style="font-size:12px;">${evalDate}</td>`;
 
                     if (result) {
                         if (result.absent) {
-                            const absCols = examData.examType === 'ca' ? (examData.courseOutcomes?.length || 0) + 1 : (examData.criteria?.length || 0) + 1;
-                            html += `<td colspan="${absCols}" style="text-align:center;background:#f3f4f6;color:#6b7280;font-style:italic;">Absent</td>`;
+                            const colCount = (examData.examType === 'ca' || examData.examType === 'ese') ? (examData.courseOutcomes?.length || 0) : (examData.criteria?.length || 0);
+                            html += `<td colspan="${colCount}" style="text-align:center;background:#f3f4f6;color:#6b7280;font-style:italic;">Absent</td>`;
+                            html += `<td style="background:#fee2e2;color:#991b1b;font-weight:700;">AB</td>`;
                             html += `<td><span class="badge badge-secondary">ABSENT</span></td>`;
-                        } else if (examData.examType === 'ca') {
-                            examData.courseOutcomes.forEach((co, coIdx) => {
-                                const coAvg = calculateCOAverageForStudent(result, coIdx, examData);
-                                html += `<td><strong style="color:#2196f3;">${(coAvg != null ? coAvg.toFixed(2) : '0.00')}</strong></td>`;
+                        } else if (examData.examType === 'ca' || examData.examType === 'ese') {
+                            let sumMarks = 0;
+                            (examData.courseOutcomes || []).forEach((co, coIdx) => {
+                                const key = `${co.name}_C1`;
+                                const legacyKey = `CO${coIdx + 1}_C1`;
+                                const val = (result.coMarks && result.coMarks[key] !== undefined && result.coMarks[key] !== null)
+                                    ? result.coMarks[key]
+                                    : (result.coMarks && result.coMarks[legacyKey] !== undefined && result.coMarks[legacyKey] !== null)
+                                        ? result.coMarks[legacyKey]
+                                        : null;
+                                if (val !== null) sumMarks += val;
+                                html += `<td><strong style="color:#2563eb;">${val !== null ? val : '-'}</strong></td>`;
                             });
-                            html += `<td style="background:#e3f2fd;"><strong style="font-size:16px;color:#1565c0;">${(result.totalMarks != null ? Number(result.totalMarks).toFixed(2) : '0.00')}</strong></td>`;
-                            html += `<td><span class="badge badge-${result.status === 'COMPLETE' ? 'success' : 'warning'}">${result.status || 'INCOMPLETE'}</span></td>`;
+                            const totDisplay = (result.totalMarks !== undefined && result.totalMarks !== -1) ? Number(result.totalMarks).toFixed(1) : sumMarks.toFixed(1);
+                            html += `<td style="background:#e0f2fe;"><strong style="font-size:15px;color:#0369a1;">${totDisplay}</strong></td>`;
+                            html += `<td><span class="badge badge-${result.status === 'COMPLETE' ? 'success' : 'warning'}">${result.status || 'COMPLETE'}</span></td>`;
                         } else {
                             (result.marks || []).forEach(mark => {
                                 html += `<td><strong>${mark !== null && mark !== undefined ? mark : '-'}</strong></td>`;
                             });
-                            html += `<td style="background:#e8f5e9;"><strong style="font-size:16px;color:#2e7d32;">${(result.totalMarks != null ? Number(result.totalMarks).toFixed(2) : '0.00')}</strong></td>`;
-                            html += `<td><span class="badge badge-${result.status === 'COMPLETE' ? 'success' : 'warning'}">${result.status || 'INCOMPLETE'}</span></td>`;
+                            const totDisplay = (result.totalMarks !== undefined && result.totalMarks !== -1) ? Number(result.totalMarks).toFixed(1) : '0';
+                            html += `<td style="background:#dcfce7;"><strong style="font-size:15px;color:#15803d;">${totDisplay}</strong></td>`;
+                            html += `<td><span class="badge badge-${result.status === 'COMPLETE' ? 'success' : 'warning'}">${result.status || 'COMPLETE'}</span></td>`;
                         }
                     } else {
-                        const colspan = examData.examType === 'ca' ? (examData.courseOutcomes?.length || 5) + 2 : (examData.criteria?.length || 0) + 2;
+                        const colspan = (examData.examType === 'ca' || examData.examType === 'ese') ? (examData.courseOutcomes?.length || 5) + 2 : (examData.criteria?.length || 0) + 2;
                         html += `<td colspan="${colspan}" style="text-align:center;color:#999;font-style:italic;">Not Evaluated</td>`;
                     }
 
@@ -5678,91 +5719,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             return count > 0 ? total / count : 0;
         }
         async function exportAllStudentsResultsCSV(examId) {
-            if (!examId) {
-                showToast('Please select an exam first', "warning");
-                return;
-            }
-
-            try {
-                const examDoc = await window.getDoc(window.doc(window.db, 'exams', examId));
-                const examData = examDoc.data();
-                const subjectDoc = await window.getDoc(window.doc(window.db, 'subjects', examData.subjectId));
-                const subjectData = subjectDoc.exists() ? subjectDoc.data() : {};
-
-                let studentsSnap;
-                if (subjectData.division) {
-                    studentsSnap = await window.getDocs(window.query(
-                        window.collection(window.db, 'students'),
-                        window.where('class', '==', subjectData.class),
-                        window.where('division', '==', subjectData.division)
-                    ));
-                } else {
-                    studentsSnap = await window.getDocs(window.query(
-                        window.collection(window.db, 'students'),
-                        window.where('class', '==', subjectData.class)
-                    ));
-                }
-
-                const resultsSnap = await window.getDocs(window.query(
-                    window.collection(window.db, 'results'),
-                    window.where('examId', '==', examId)
-                ));
-
-                const resultsMap = {};
-                resultsSnap.forEach(doc => {
-                    const data = doc.data();
-                    resultsMap[data.studentId] = data;
-                });
-                let csv = 'Sr. No.,Roll No.,Enrollment,Student Name,Email,Phone,';
-
-                if (examData.examType === 'ca') {
-                    examData.courseOutcomes.forEach((co, idx) => {
-                        csv += `${co.name} Average,`;
-                    });
-                    csv += 'Overall Average,Status\n';
-                } else {
-                    examData.criteria.forEach(c => {
-                        csv += `${escapeCSV(c.name)} (Max ${c.maxMarks}),`;
-                    });
-                    csv += 'Total Marks,Status\n';
-                }
-                let srNo = 1;
-                studentsSnap.forEach(studentDoc => {
-                    const student = studentDoc.data();
-                    const result = resultsMap[studentDoc.id];
-
-                    csv += `${srNo},${student.rollNo || ''},${student.enrollment},${escapeCSV(sanitizeString(student.name, 100))},${student.email || ''},${student.phone || ''},`;
-
-                    if (result) {
-                        if (result.absent) {
-                            const blanks = examData.examType === 'ca' ? (examData.courseOutcomes?.length || 0) + 1 : (examData.criteria?.length || 0) + 1;
-                            csv += ','.repeat(blanks) + 'ABSENT';
-                        } else if (examData.examType === 'ca') {
-                            (examData.courseOutcomes || []).forEach((co, coIdx) => {
-                                const coAvg = calculateCOAverageForStudent(result, coIdx, examData);
-                                csv += `${(coAvg != null ? coAvg.toFixed(2) : '0.00')},`;
-                            });
-                            csv += `${(result.totalMarks != null ? Number(result.totalMarks).toFixed(2) : '0.00')},${result.status}`;
-                        } else {
-                            (result.marks || []).forEach(mark => {
-                                csv += `${mark !== null && mark !== undefined ? mark : ''},`;
-                            });
-                            csv += `${(result.totalMarks != null ? Number(result.totalMarks).toFixed(2) : '0.00')},${result.status}`;
-                        }
-                    } else {
-                        const blanks = examData.examType === 'ca' ? (examData.courseOutcomes?.length || 0) + 1 : (examData.criteria?.length || 0) + 1;
-                        csv += ','.repeat(blanks) + 'Not Evaluated';
-                    }
-
-                    csv += '\n';
-                    srNo++;
-                });
-
-                (function () { const _wb = XLSX.utils.book_new(); const _rows = csv.trim().split('\n').map(r => r.split(',')); XLSX.utils.book_append_sheet(_wb, XLSX.utils.aoa_to_sheet(_rows), 'Data'); XLSX.writeFile(_wb, `results_${examData.name}_all_students_${Date.now()}.xlsx`); })();
-                showToast('All students results exported successfully!', 'success');
-            } catch (error) {
-                showToast('Error exporting: ' + error.message, 'danger');
-            }
+            return exportOfficialUniversityFormatExcel(examId);
         }
 
         function getGradeBadgeColor(grade) {
@@ -5799,6 +5756,8 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                         name: data.name || 'Unknown',
                         email: data.email || '',
                         dept: data.department || '',
+                        division: data.division || '',
+                        batches: data.batches || [],
                         isActive: data.isActive !== false,
                         examRestricted: data.examRestricted === true,
                         approvalStatus: data.approvalStatus || 'pending'
@@ -5850,10 +5809,12 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 const examBadge = examR
                     ? '<span style="background:#f59e0b;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;font-weight:700;margin-left:4px;">EXAM RESTRICTED</span>'
                     : '';
+                const divStr = t.division ? ' &bull; Div: ' + t.division : '';
+                const batchStr = t.batches && t.batches.length > 0 ? ' &bull; Batches: B' + t.batches.join(', B') : '';
                 return `<div class="teacher-account-card${active ? '' : ' disabled'}">
  <div class="teacher-account-info">
  <strong>${t.name}</strong>
- <span>${t.email}${t.dept ? ' &bull; ' + t.dept : ''}</span>
+ <span>${t.email}${t.dept ? ' &bull; ' + t.dept : ''}${divStr}${batchStr}</span>
  </div>
  <div class="teacher-account-actions">
  ${statusBadge}${examBadge}
@@ -7012,7 +6973,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 
             try {
                 if (window.pdfjsLib) {
-                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
                 } else {
                     throw new Error('PDF library not loaded');
                 }
@@ -7704,17 +7665,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
         async function exportResultsExcel() {
             const examId = document.getElementById('resultsExam')?.value || document.getElementById('teacherResultsExam')?.value || '';
             if (!examId) { showToast('Please select an exam first', 'warning'); return; }
-
-            window.getDocs(window.query(window.collection(window.db, 'results'), window.where('examId', '==', examId)))
-                .then(snap => {
-                    if (snap.empty) { showToast('No results to export', 'warning'); return; }
-                    const data = snap.docs.map(d => {
-                        const r = d.data();
-                        return { 'Student': r.studentName || r.studentId || '', 'Enrollment': r.enrollment || '', 'Total': r.totalMarks || 0, 'Max': r.maxMarks || 0, '%': r.percentage || 0, 'Grade': r.grade || '' };
-                    });
-                    exportToExcel(data, `results_${examId}_${Date.now()}`, 'Results');
-                    showToast('Results exported', 'success');
-                }).catch(e => showToast('Export failed: ' + e.message, 'danger'));
+            return exportOfficialUniversityFormatExcel(examId);
         }
 
         async function exportResultsPDF() {
@@ -8977,6 +8928,41 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 
                     await window.setDoc(window.doc(window.db, 'users', newUser.uid), userData);
 
+                    // Auto-assign faculty to any existing subjects matching their division
+                    if (faculty.division) {
+                        try {
+                            const matchingSubs = await window.getDocs(window.query(
+                                window.collection(window.db, 'subjects'),
+                                window.where('division', '==', faculty.division)
+                            ));
+                            for (const subDoc of matchingSubs.docs) {
+                                const subData = subDoc.data();
+                                if (subData.isDeleted) continue;
+                                if (window.currentUser.department && subData.department && subData.department !== window.currentUser.department) continue;
+
+                                const existingAsgn = await window.getDocs(window.query(
+                                    window.collection(window.db, 'teacher_assignments'),
+                                    window.where('teacherEmail', '==', faculty.email),
+                                    window.where('subjectId', '==', subDoc.id)
+                                ));
+                                if (existingAsgn.empty) {
+                                    await window.addDoc(window.collection(window.db, 'teacher_assignments'), {
+                                        teacherEmail: faculty.email,
+                                        subjectId: subDoc.id,
+                                        class: subData.class || '',
+                                        division: faculty.division,
+                                        batches: faculty.batches,
+                                        assignedBy: window.currentUser.uid,
+                                        assignedAt: new Date().toISOString(),
+                                        autoAssigned: true
+                                    });
+                                }
+                            }
+                        } catch (autoErr) {
+                            console.warn('Auto subject assignment warning:', autoErr);
+                        }
+                    }
+
                     // Sign out secondary auth to clean up the session
                     if (window.secondaryAuth) {
                         await window.signOut(window.secondaryAuth);
@@ -9075,11 +9061,329 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             showToast('📊 Import report downloaded!', 'info', 3000);
         }
 
+        /**
+         * Dynamically filters table rows based on student total marks.
+         * Target containers: 'resultsTable', 'teacherResultsContainer', 'hodResultsContainer', 'coordinatorResultsContainer'
+         */
+        function filterResultsByMarks(containerId, filterVal) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const rows = container.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const marksAttr = row.getAttribute('data-total-marks');
+                if (marksAttr === null) return;
+
+                if (marksAttr === '' || marksAttr === 'AB' || marksAttr === '-1') {
+                    row.style.display = (filterVal === 'all') ? '' : 'none';
+                    return;
+                }
+
+                const val = parseFloat(marksAttr);
+                if (isNaN(val)) {
+                    row.style.display = (filterVal === 'all') ? '' : 'none';
+                    return;
+                }
+
+                let show = false;
+                switch (filterVal) {
+                    case 'all': show = true; break;
+                    case 'above20': show = val > 20; break;
+                    case 'above15': show = val > 15; break;
+                    case 'above10': show = val > 10; break;
+                    case 'above5': show = val > 5; break;
+                    case 'below5': show = val <= 5; break;
+                    default: show = true; break;
+                }
+                row.style.display = show ? '' : 'none';
+            });
+        }
+        window.filterResultsByMarks = filterResultsByMarks;
+
+        /**
+         * Calculates marks distribution (>20, >15, >10, >5, <=5) across all evaluated exams
+         * and populates the dashboard analytics cards in real-time.
+         */
+        async function loadMarksAnalytics() {
+            try {
+                const resultsSnap = await window.getDocs(window.collection(window.db, 'results'));
+                let above20 = 0, above15 = 0, above10 = 0, above5 = 0, below5 = 0, total = 0;
+
+                resultsSnap.forEach(d => {
+                    const data = d.data();
+                    if (data.absent || data.totalMarks === undefined || data.totalMarks === -1) return;
+                    const val = parseFloat(data.totalMarks);
+                    if (isNaN(val)) return;
+                    total++;
+                    if (val > 20) above20++;
+                    if (val > 15) above15++;
+                    if (val > 10) above10++;
+                    if (val > 5) above5++;
+                    if (val <= 5) below5++;
+                });
+
+                const getPct = (cnt) => total > 0 ? ((cnt / total) * 100).toFixed(1) + '%' : '0%';
+
+                const t20 = document.getElementById('teacherAbove20Count');
+                if (t20) {
+                    t20.textContent = above20;
+                    if (document.getElementById('teacherAbove20Pct')) document.getElementById('teacherAbove20Pct').textContent = getPct(above20);
+                    if (document.getElementById('teacherAbove15Count')) document.getElementById('teacherAbove15Count').textContent = above15;
+                    if (document.getElementById('teacherAbove15Pct')) document.getElementById('teacherAbove15Pct').textContent = getPct(above15);
+                    if (document.getElementById('teacherAbove10Count')) document.getElementById('teacherAbove10Count').textContent = above10;
+                    if (document.getElementById('teacherAbove10Pct')) document.getElementById('teacherAbove10Pct').textContent = getPct(above10);
+                    if (document.getElementById('teacherAbove5Count')) document.getElementById('teacherAbove5Count').textContent = above5;
+                    if (document.getElementById('teacherAbove5Pct')) document.getElementById('teacherAbove5Pct').textContent = getPct(above5);
+                    if (document.getElementById('teacherBelow5Count')) document.getElementById('teacherBelow5Count').textContent = below5;
+                    if (document.getElementById('teacherBelow5Pct')) document.getElementById('teacherBelow5Pct').textContent = getPct(below5);
+                }
+
+                const h20 = document.getElementById('hodAbove20Count');
+                if (h20) {
+                    h20.textContent = above20;
+                    if (document.getElementById('hodAbove20Pct')) document.getElementById('hodAbove20Pct').textContent = getPct(above20);
+                    if (document.getElementById('hodAbove15Count')) document.getElementById('hodAbove15Count').textContent = above15;
+                    if (document.getElementById('hodAbove15Pct')) document.getElementById('hodAbove15Pct').textContent = getPct(above15);
+                    if (document.getElementById('hodAbove10Count')) document.getElementById('hodAbove10Count').textContent = above10;
+                    if (document.getElementById('hodAbove10Pct')) document.getElementById('hodAbove10Pct').textContent = getPct(above10);
+                    if (document.getElementById('hodAbove5Count')) document.getElementById('hodAbove5Count').textContent = above5;
+                    if (document.getElementById('hodAbove5Pct')) document.getElementById('hodAbove5Pct').textContent = getPct(above5);
+                    if (document.getElementById('hodBelow5Count')) document.getElementById('hodBelow5Count').textContent = below5;
+                    if (document.getElementById('hodBelow5Pct')) document.getElementById('hodBelow5Pct').textContent = getPct(below5);
+                }
+            } catch (e) {
+                console.warn('Error loading marks analytics:', e);
+            }
+        }
+        window.loadMarksAnalytics = loadMarksAnalytics;
+
+        /**
+         * Helper: Converts numbers (0-100) to formal English words (e.g. 25 -> "Twenty Five Only")
+         */
+        function numberToWords(num) {
+            if (num === null || num === undefined || num === '' || num === 'AB' || num < 0) return 'Absent';
+            const n = Math.round(parseFloat(num));
+            if (isNaN(n) || n === 0) return 'Zero Only';
+
+            const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+                'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+            const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+            if (n < 20) return ones[n] + ' Only';
+            if (n < 100) {
+                const t = Math.floor(n / 10);
+                const rem = n % 10;
+                return tens[t] + (rem > 0 ? ' ' + ones[rem] : '') + ' Only';
+            }
+            return n + ' Only';
+        }
+        window.numberToWords = numberToWords;
+
+        /**
+         * Generates and downloads the official MIT ADT University formatted Excel Marksheet
+         * including Header, Rubrics Evaluation Matrix, CO breakdown, Total Marks, and Marks in Words.
+         */
+        async function exportOfficialUniversityFormatExcel(examId) {
+            if (!examId) {
+                showToast('Please select an exam first', 'warning');
+                return;
+            }
+
+            if (typeof XLSX === 'undefined') {
+                showToast('Excel library not loaded.', 'danger');
+                return;
+            }
+
+            try {
+                if (typeof window.showLoadingMessage === 'function') window.showLoadingMessage('Generating Official University Excel Marksheet...');
+
+                const examDoc = await window.getDoc(window.doc(window.db, 'exams', examId));
+                if (!examDoc.exists()) {
+                    if (typeof window.hideLoadingMessage === 'function') window.hideLoadingMessage();
+                    showToast('Exam not found', 'danger');
+                    return;
+                }
+                const examData = examDoc.data();
+                const subjectDoc = await window.getDoc(window.doc(window.db, 'subjects', examData.subjectId));
+                const subjectData = subjectDoc.exists() ? subjectDoc.data() : {};
+
+                let studentsSnap;
+                if (subjectData.division) {
+                    studentsSnap = await window.getDocs(window.query(
+                        window.collection(window.db, 'students'),
+                        window.where('class', '==', subjectData.class || ''),
+                        window.where('division', '==', subjectData.division || '')
+                    ));
+                } else {
+                    studentsSnap = await window.getDocs(window.query(
+                        window.collection(window.db, 'students'),
+                        window.where('class', '==', subjectData.class || '')
+                    ));
+                }
+
+                const resultsSnap = await window.getDocs(window.query(
+                    window.collection(window.db, 'results'),
+                    window.where('examId', '==', examId)
+                ));
+
+                const resultsMap = {};
+                resultsSnap.forEach(d => { resultsMap[d.data().studentId] = d.data(); });
+
+                const teacherName = window.currentUser?.name || 'Prof. Faculty';
+
+                // Array of Arrays for Excel Sheet
+                const aoa = [];
+
+                // Page 1 Header Rows matching official template
+                aoa.push(['MIT ADT University, School of Computing, Pune']);
+                aoa.push(['Department of Computer Science and Engineering']);
+                const examTitle = examData.name || (examData.examType === 'ese' ? 'End Semester Examination May 2026' : 'Continuous Assessment Examination');
+                aoa.push([examTitle]);
+                aoa.push(['Jury Assessment Examination Mark Sheet']);
+                aoa.push([`Subject Code: ${subjectData.code || '23CSE1103R'}`, '', '', `Subject Name: ${subjectData.name || 'Jury Assessment Examination'}`]);
+                aoa.push([
+                    `Programme: B.Tech`,
+                    `Year: ${subjectData.class || 'FY'}`,
+                    `Semester: ${subjectData.semester || 'SEM-II'}`,
+                    `Branch: CSE/IT`,
+                    `Division: ${subjectData.division || 'SOC-03'}`,
+                    `Batch: ${subjectData.division || 'A'}`,
+                    `Date: ${new Date().toLocaleDateString()}`
+                ]);
+                aoa.push([
+                    `Name of Internal Examiner: ${teacherName}`,
+                    '',
+                    `Name of External Jury Member & Institute: External Examiner`,
+                    '',
+                    `Time: 9:00 am to 11:00 am`
+                ]);
+                aoa.push([]); // Spacer row 8
+
+                // Rubrics Matrix Header & Rows matching official template
+                aoa.push(['Criteria', 'Excellent (5-4 Marks)', 'Good (3 Marks)', 'Satisfactory (1-2 Marks)', 'Poor (0 Marks)']);
+
+                const defaultRubrics = [
+                    { name: 'CO1: Class, Object & Data Members', exc: 'Correct class created with proper data members and object creation', gd: 'Minor mistake in class/object', sat: 'Class created partially with missing members/object', pr: 'Class/object concept not implemented' },
+                    { name: 'CO2: Constructor & Function Implementation', exc: 'Constructor correctly initializes values and function performs required calculation', gd: 'Minor mistake in constructor or function logic', sat: 'Constructor/function partially implemented', pr: 'Constructor/function missing or incorrect' },
+                    { name: 'CO3: Inheritance & Function Overriding', exc: 'Correct inheritance and proper overriding of base class function in derived class', gd: 'Minor mistake in inheritance/overriding but concept works', sat: 'Inheritance used but overriding not properly shown', pr: 'Inheritance/overriding not implemented' },
+                    { name: 'CO4: Program Flow, Function Calling & Output', exc: 'All objects created, functions called correctly, and output is proper', gd: 'Minor mistake in calling or output format', sat: 'Partial function calling/output shown', pr: 'Program does not execute properly' },
+                    { name: 'CO5: Template Declaration', exc: 'Correct template function implemented and tested with required values', gd: 'Template works with minor syntax/logic issue', sat: 'Template partially implemented or tested incorrectly', pr: 'Template not used or incorrect' }
+                ];
+
+                const cos = (examData.courseOutcomes && examData.courseOutcomes.length > 0) ? examData.courseOutcomes : [
+                    { name: 'CO1', criteria: [{ maxMarks: 5 }] },
+                    { name: 'CO2', criteria: [{ maxMarks: 5 }] },
+                    { name: 'CO3', criteria: [{ maxMarks: 5 }] },
+                    { name: 'CO4', criteria: [{ maxMarks: 5 }] },
+                    { name: 'CO5', criteria: [{ maxMarks: 5 }] }
+                ];
+
+                cos.forEach((co, idx) => {
+                    const r = defaultRubrics[idx % defaultRubrics.length];
+                    aoa.push([
+                        `${co.name}: ${co.description || r.name.split(': ')[1] || 'Evaluation Criteria'}`,
+                        r.exc, r.gd, r.sat, r.pr
+                    ]);
+                });
+
+                aoa.push([]); // Spacer row 15
+
+                // Student Marksheet Table Header matching Page 2 image
+                const coHeaders = cos.map((co, cidx) => {
+                    const maxM = co.criteria?.[0]?.maxMarks || 5;
+                    const letter = String.fromCharCode(65 + cidx); // A, B, C, D, E
+                    return `${letter} - ${co.name} (${maxM} M)`;
+                });
+
+                const totalExamMaxMarks = examData.totalMarks || cos.reduce((sum, c) => sum + (c.criteria?.[0]?.maxMarks || 5), 0);
+
+                aoa.push([
+                    'Sr. No.',
+                    'Enrollment No',
+                    'Name of the Student',
+                    'Que. No. / Chit No.',
+                    ...coHeaders,
+                    `Total Marks out of ${totalExamMaxMarks}`,
+                    'Marks in Words'
+                ]);
+
+                // Student Rows
+                let srNo = 1;
+                studentsSnap.forEach(studentDoc => {
+                    const student = studentDoc.data();
+                    const res = resultsMap[studentDoc.id];
+                    const isAbsent = !res || res.absent === true;
+
+                    const coVals = cos.map((co, cidx) => {
+                        if (isAbsent) return 'AB';
+                        const key = `${co.name}_C1`;
+                        const legacyKey = `CO${cidx + 1}_C1`;
+                        const val = res.coMarks?.[key] ?? res.coMarks?.[legacyKey] ?? null;
+                        return val !== null && val !== undefined ? val : '-';
+                    });
+
+                    let totalVal = 'AB';
+                    if (!isAbsent && res) {
+                        if (res.totalMarks !== undefined && res.totalMarks !== -1) {
+                            totalVal = Number(res.totalMarks).toFixed(1);
+                        } else {
+                            let sum = 0;
+                            coVals.forEach(v => { if (typeof v === 'number') sum += v; });
+                            totalVal = sum.toFixed(1);
+                        }
+                    }
+
+                    const words = isAbsent ? 'Absent' : numberToWords(totalVal);
+
+                    aoa.push([
+                        srNo,
+                        student.enrollment || '',
+                        sanitizeString(student.name || ''),
+                        srNo, // Chit/Que No
+                        ...coVals,
+                        totalVal,
+                        words
+                    ]);
+
+                    srNo++;
+                });
+
+                // Generate SheetJS workbook
+                const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+                ws['!cols'] = [
+                    { wch: 8 },  // Sr No
+                    { wch: 18 }, // Enrollment No
+                    { wch: 28 }, // Name of Student
+                    { wch: 18 }, // Que No / Chit No
+                    ...cos.map(() => ({ wch: 14 })), // CO columns
+                    { wch: 22 }, // Total Marks
+                    { wch: 25 }  // Marks in Words
+                ];
+
+                const wb = XLSX.utils.book_new();
+                const sheetName = `${subjectData.division || 'SOC-03'}_Marksheet`.slice(0, 31);
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+                const fileName = `${(subjectData.name || 'Marksheet').replace(/[^a-zA-Z0-9]/g, '_')}_${subjectData.division || 'Div'}_Official_${Date.now()}.xlsx`;
+                XLSX.writeFile(wb, fileName);
+
+                if (typeof window.hideLoadingMessage === 'function') window.hideLoadingMessage();
+                showToast('📊 Official University Marksheet Excel downloaded!', 'success', 5000);
+
+            } catch (err) {
+                if (typeof window.hideLoadingMessage === 'function') window.hideLoadingMessage();
+                console.error('Official Excel Export error:', err);
+                showToast('Export error: ' + err.message, 'danger');
+            }
+        }
+        window.exportOfficialUniversityFormatExcel = exportOfficialUniversityFormatExcel;
+
         // Expose new faculty registration functions globally
         window.downloadFacultyTemplate = downloadFacultyTemplate;
         window.handleFacultyExcelUpload = handleFacultyExcelUpload;
         window.importFacultyFromExcel = importFacultyFromExcel;
         window.exportFacultyRegistrationReport = exportFacultyRegistrationReport;
 
-        console.log("Evaluator v1.0.9: App logic initialized and bridged.");
+        console.log("Evaluator v1.1.0: App logic initialized and verified.");
 

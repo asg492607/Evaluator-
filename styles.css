@@ -693,7 +693,7 @@ table tr:hover td { background: var(--bg-surface2); }
 .no-data::before { content:"📊"; display:block; font-size:48px; margin-bottom:15px; }
 
 /* ---- Input number ---- */
-input[type="number"] { -moz-appearance:textfield; }
+input[type="number"] { -moz-appearance:textfield; appearance:textfield; }
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button { opacity:1; }
 
