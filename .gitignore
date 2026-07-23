@@ -2,3 +2,6 @@ service-account.json
 *.key
 .env
 node_modules/
+*.xlsx
+*.csv
+

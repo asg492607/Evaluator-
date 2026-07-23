@@ -615,6 +615,7 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 }
 
                 const userData = userDoc.data();
+                window.currentUser = { ...userData, uid: user.uid };
 
                 if (userData.isLocked) {
                     await window.signOut(window.auth);
@@ -650,6 +651,9 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 } catch (logError) { }
 
                 if (typeof window.resetIdleTimer === "function") window.resetIdleTimer();
+
+                showToast(`Welcome back, ${userData.name || 'User'}!`, 'success');
+                showDashboard(userData.role);
 
             } catch (error) {
                 if (btn) { btn.classList.remove('loading'); btn.textContent = 'Login'; }
@@ -705,13 +709,13 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     document.getElementById('hodDashboard').classList.add('active');
                     const badge = document.getElementById('hodRoleBadge');
                     if (badge && window.currentUser) badge.textContent = 'HOD';
-                    loadHODData();
-                    loadCoordinatorsDropdown();
+                    if (typeof loadHODData === 'function') loadHODData().catch(e => console.error("loadHODData error:", e));
+                    if (typeof loadCoordinatorsDropdown === 'function') loadCoordinatorsDropdown().catch(e => console.error("loadCoordinatorsDropdown error:", e));
                     break;
                 case 'coordinator':
                     document.getElementById('coordinatorDashboard').classList.add('active');
-                    loadCoordinatorData();
-                    loadTeachersDropdown();
+                    if (typeof loadCoordinatorData === 'function') loadCoordinatorData().catch(e => console.error("loadCoordinatorData error:", e));
+                    if (typeof loadTeachersDropdown === 'function') loadTeachersDropdown().catch(e => console.error("loadTeachersDropdown error:", e));
                     break;
                 case 'teacher':
                     document.getElementById('teacherDashboard').classList.add('active');
@@ -724,11 +728,11 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                         }
                         teacherBadge.textContent = text;
                     }
-                    loadTeacherData();
+                    if (typeof loadTeacherData === 'function') loadTeacherData().catch(e => console.error("loadTeacherData error:", e));
                     break;
                 case 'student':
                     document.getElementById('studentDashboard').classList.add('active');
-                    loadStudentData();
+                    if (typeof loadStudentData === 'function') loadStudentData().catch(e => console.error("loadStudentData error:", e));
                     break;
                 default:
                     showToast('Unknown role "' + role + '". Please contact the administrator.', 'danger');
@@ -965,12 +969,14 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 loadTeacherAccountList();
             } else if (section === 'results') {
                 loadResultsForHOD();
+            } else if (section === 'coattainment') {
+                loadCOAttainmentPage('hod');
             }
         }
 
         async function loadHODData() {
             try {
-                const hodDept = window.currentUser.department || window.currentUser.departmentId;
+                const hodDept = window.currentUser?.department || window.currentUser?.departmentId || '';
                 
                 // Departments are global usually, but stats should be filtered
                 const deptsSnap = await window.getDocs(window.collection(window.db, 'departments'));
@@ -1067,7 +1073,7 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     showToast('This coordinator account is not approved yet!\n\nPlease approve the user first in "Pending Approvals" section.', "danger");
                     return;
                 }
-                const hodDept = window.currentUser.department || window.currentUser.departmentId;
+                const hodDept = window.currentUser?.department || window.currentUser?.departmentId || '';
                 if (hodDept && coordUser.department && coordUser.department !== hodDept) {
                     showToast('Cross-department assignment not allowed. Coordinator dept: ' + coordUser.department, 'danger');
                     return;
@@ -1276,14 +1282,19 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 if (dateInput && !dateInput.value) {
                     dateInput.value = new Date().toISOString().split('T')[0];
                 }
+            } else if (section === 'coattainment') {
+                loadCOAttainmentPage('coord');
             }
         }
 
         async function loadCoordinatorData() {
-            const year = document.getElementById('academicYear').value;
-            const semester = document.getElementById('semester').value;
-            const coordDept = window.currentUser.department;
             try {
+                const yearEl = document.getElementById('academicYear');
+                const semEl = document.getElementById('semester');
+                const year = yearEl ? yearEl.value : '';
+                const semester = semEl ? semEl.value : '';
+                const coordDept = window.currentUser ? window.currentUser.department : '';
+
                 let subjectsQuery = window.query(window.collection(window.db, 'subjects'),
                     window.where('academicYear', '==', year),
                     window.where('semester', '==', semester));
@@ -1448,13 +1459,19 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             if (!window.currentUser) { showToast('Session expired. Please log in again.', 'danger'); return; }
             const name = document.getElementById('subjectName').value.trim();
             const code = document.getElementById('subjectCode').value.trim();
-            const classVal = document.getElementById('subjectClass').value.trim();
-            const division = document.getElementById('subjectDivision').value.trim();
+            
+            const classEl = document.getElementById('subjectClass');
+            const classVal = classEl ? (classEl.options ? (classEl.options[classEl.selectedIndex]?.dataset?.code || classEl.options[classEl.selectedIndex]?.text?.split(' - ')[0] || classEl.value) : classEl.value).trim() : '';
+
+            const divEl = document.getElementById('subjectDivision');
+            const division = divEl ? (divEl.options ? (divEl.options[divEl.selectedIndex]?.dataset?.name || divEl.options[divEl.selectedIndex]?.text?.replace('Div ', '') || divEl.value) : divEl.value).trim() : '';
+
+            const batchVal = document.getElementById('subjectBatch')?.value?.trim() || '';
             const year = document.getElementById('academicYear').value;
             const semester = document.getElementById('semester').value;
 
             if (!name || !code || !classVal || !division) {
-                showToast('Please fill in all fields', "danger");
+                showToast('Please fill in all required fields (Subject Name, Code, Class, Division)', "danger");
                 return;
             }
 
@@ -1479,6 +1496,7 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     code,
                     class: classVal,
                     division,
+                    batch: batchVal || 'All',
                     academicYear: year,
                     semester,
                     department: window.currentUser.department || '',
@@ -1500,8 +1518,6 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 showToast('Subject added successfully!', "success");
                 document.getElementById('subjectName').value = '';
                 document.getElementById('subjectCode').value = '';
-                document.getElementById('subjectClass').value = '';
-                document.getElementById('subjectDivision').value = '';
                 loadSubjectsList();
             } catch (error) {
                 showToast('Error: ' + error.message, 'danger');
@@ -1511,8 +1527,8 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
         async function loadSubjectsList() {
             const tbody = document.getElementById('subjectsList');
             const assignSelect = document.getElementById('assignSubject');
-            tbody.innerHTML = '<tr><td colspan="8">Loading...</td></tr>';
-            assignSelect.innerHTML = '<option value="">Select subject</option>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7">Loading...</td></tr>';
+            if (assignSelect) assignSelect.innerHTML = '<option value="">Select subject</option>';
 
             try {
                 const year = document.getElementById('academicYear').value;
@@ -1520,32 +1536,40 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 const snapshot = await window.getDocs(window.query(window.collection(window.db, 'subjects'),
                     window.where('academicYear', '==', year),
                     window.where('semester', '==', semester)));
-                tbody.innerHTML = '';
+                if (tbody) tbody.innerHTML = '';
 
                 snapshot.forEach(docSnap => {
                     const data = docSnap.data();
                     if (data.isDeleted) return;
 
-                    const row = tbody.insertRow();
-                    row.innerHTML = `
- <td><code style="font-size:10px;color:#6b7280;">${docSnap.id.substring(0,6)}...</code></td>
+                    if (tbody) {
+                        const row = tbody.insertRow();
+                        row.innerHTML = `
+ <td>
+    <button class="btn btn-sm btn-outline-primary" style="font-size:11px;padding:2px 6px;margin-right:4px;" onclick="navigator.clipboard.writeText('${docSnap.id}'); showToast('Subject ID copied to clipboard!','info')" title="Click to copy full Firebase ID">📋 Copy</button>
+    <code style="font-size:11px;color:#6b7280;">${docSnap.id.substring(0,8)}...</code>
+ </td>
  <td>${sanitizeString(data.name)}</td>
  <td>${data.code}</td>
  <td>${data.class}</td>
  <td>${data.division}</td>
+ <td><span class="badge badge-secondary">${data.batch || 'All'}</span></td>
  <td><button class="btn btn-danger btn-sm" onclick="deleteSubject('${docSnap.id}')">Delete</button></td> `;
+                    }
 
-                    const option = document.createElement('option');
-                    option.value = docSnap.id;
-                    option.textContent = `${data.code} - ${data.name} (${data.class}-${data.division})`;
-                    assignSelect.appendChild(option);
+                    if (assignSelect) {
+                        const option = document.createElement('option');
+                        option.value = docSnap.id;
+                        option.textContent = `${data.code} - ${data.name} (${data.class}-${data.division}${data.batch ? ' Batch ' + data.batch : ''})`;
+                        assignSelect.appendChild(option);
+                    }
                 });
 
-                if (tbody.rows.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No subjects added yet</td></tr>';
+                if (tbody && tbody.rows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No subjects added yet</td></tr>';
                 }
             } catch (error) {
-                tbody.innerHTML = '<tr><td colspan="5">Error loading data</td></tr>';
+                if (tbody) tbody.innerHTML = '<tr><td colspan="7">Error loading data</td></tr>';
             }
         }
 
@@ -1577,13 +1601,22 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 
         async function addStudent() {
             if (!window.currentUser) { showToast('Session expired. Please log in again.', 'danger'); return; }
-            const enrollment = document.getElementById('studentEnrollment').value;
-            const name = document.getElementById('studentName').value;
-            const classVal = document.getElementById('studentClass').value;
-            const division = document.getElementById('studentDivision').value;
+            const enrollment = document.getElementById('studentEnrollment').value.trim();
+            const name = document.getElementById('studentName').value.trim();
+
+            const classEl = document.getElementById('studentClass');
+            const classVal = classEl ? (classEl.options ? (classEl.options[classEl.selectedIndex]?.dataset?.code || classEl.options[classEl.selectedIndex]?.text?.split(' - ')[0] || classEl.value) : classEl.value).trim() : '';
+
+            const divEl = document.getElementById('studentDivision');
+            const division = divEl ? (divEl.options ? (divEl.options[divEl.selectedIndex]?.dataset?.name || divEl.options[divEl.selectedIndex]?.text?.replace('Div ', '') || divEl.value) : divEl.value).trim() : '';
+
+            const batchVal = document.getElementById('studentBatch')?.value?.trim() || '';
+            const email = document.getElementById('studentEmail')?.value?.trim() || '';
+            const phone = document.getElementById('studentPhone')?.value?.trim() || '';
+            const rollNo = document.getElementById('studentRollNo')?.value?.trim() || '';
 
             if (!enrollment || !name || !classVal || !division) {
-                showToast('Please fill in all fields', "warning");
+                showToast('Please fill in all required fields (Name, Enrollment, Class, Division)', "warning");
                 return;
             }
 
@@ -1601,9 +1634,12 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     name,
                     class: classVal,
                     division,
-                    academicYear: document.getElementById('academicYear').value,
-                    semester: document.getElementById('semester').value,
-                    // BUG-09 FIX: Attach department so HOD dashboard stats can count this student
+                    batch: batchVal,
+                    email,
+                    phone,
+                    rollNo,
+                    academicYear: document.getElementById('academicYear')?.value || '',
+                    semester: document.getElementById('semester')?.value || '',
                     department: window.currentUser.department || '',
                     createdBy: window.currentUser.uid,
                     createdAt: new Date().toISOString(),
@@ -1786,11 +1822,12 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                             return k ? String(item[k]).trim() : '';
                         };
                         return {
-                            enrollment: get(['enrollmentno', 'enrollment', 'enrollno', 'enrollment no', 'enrollment number', 'enrollmentnumber', 'prn', 'id']),
+                            enrollment: get(['enrollmentno', 'enrollment', 'enrollno', 'enrollment no', 'enrollment number', 'enrollmentnumber', 'prn']),
                             name: get(['name', 'studentname', 'student name', 'full name', 'fullname', 'name of student']),
                             class: get(['class', 'classname', 'class name', 'year']),
                             division: get(['division', 'div', 'section']),
-                            rollNo: get(['roll', 'sr', 'no', 'rollno', 'roll no']),
+                            batch: get(['batch', 'batchname', 'batch name']),
+                            rollNo: get(['rollno', 'roll no', 'roll', 'srno', 'sr no', 'sr.no.', 'sr. no.']),
                             parentEmail: get(['parent', 'guardian', 'parent email']),
                             studentEmail: get(['email', 'student email', 'personal email']),
                             phone: get(['phone', 'mobile', 'contact', 'mobile no'])
@@ -1924,25 +1961,41 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 
         let allStudentsData = [];
 
+        function populateDivisionFilter(students) {
+            const select = document.getElementById('studentDivisionFilter');
+            if (!select) return;
+            const currentVal = select.value;
+            const divisions = Array.from(new Set((students || []).map(s => s.division).filter(Boolean))).sort();
+            
+            let html = '<option value="">All Divisions</option>';
+            divisions.forEach(d => {
+                html += `<option value="${d}" ${d === currentVal ? 'selected' : ''}>Division ${d}</option>`;
+            });
+            select.innerHTML = html;
+        }
+
         function displayStudents(students) {
             const tbody = document.getElementById('studentsList');
+            if (!tbody) return;
             tbody.innerHTML = '';
 
             students.forEach((data, index) => {
                 const row = tbody.insertRow();
                 row.innerHTML = `
                     <td style="color:#6b7280;font-size:12px;">${index + 1}</td>
-                    <td>${data.enrollment}</td>
+                    <td><strong>${data.enrollment}</strong></td>
                     <td>${sanitizeString(data.name)}</td>
-                    <td>${data.class}</td>
-                    <td>${data.division}</td>
+                    <td>${data.class || '-'}</td>
+                    <td><span class="badge badge-info">${data.division || '-'}</span></td>
+                    <td>${data.batch ? `<span class="badge badge-secondary">${data.batch}</span>` : '-'}</td>
+                    <td>${data.rollNo || '-'}</td>
                     <td>
-                        <button class="btn btn-danger btn-sm" onclick="deleteStudent('${data.id}', \`${data.name.replace(/[`\\$]/g, '\\$&')}\`)">Delete</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteStudent('${data.id}', \`${(data.name || '').replace(/[`\\$]/g, '\\$&')}\`)">Delete</button>
                     </td> `;
             });
 
             if (students.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No students found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No students found</td></tr>';
             }
         }
 
@@ -1952,10 +2005,15 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             _filterDebounce = setTimeout(_doFilterStudents, 180);
         }
 
+        function filterStudentsByDivision() {
+            _doFilterStudents();
+        }
+        window.filterStudentsByDivision = filterStudentsByDivision;
+
         async function loadStudentsList() {
             const tbody = document.getElementById('studentsList');
             const countDiv = document.getElementById('studentsCount');
-            tbody.innerHTML = '<tr><td colspan="8">Loading...</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="8">Loading...</td></tr>';
 
             try {
                 const year = document.getElementById('academicYear')?.value;
@@ -1979,7 +2037,8 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 // Sort in memory to avoid Firestore Indexing issues
                 allStudentsData.sort((a, b) => (a.enrollment || "").localeCompare(b.enrollment || ""));
 
-                displayStudents(allStudentsData);
+                populateDivisionFilter(allStudentsData);
+                _doFilterStudents();
 
                 if (countDiv) {
                     countDiv.textContent = `Total: ${allStudentsData.length} students`;
@@ -1989,28 +2048,35 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 }
             } catch (error) {
                 console.error("Load Students Error:", error);
-                tbody.innerHTML = `<tr><td colspan="8" style="color:red;text-align:center;">Error loading students: ${error.message}</td></tr>`;
+                if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="color:red;text-align:center;">Error loading students: ${error.message}</td></tr>`;
             }
         }
 
         function _doFilterStudents() {
             const searchText = document.getElementById('studentSearch')?.value?.toLowerCase() || '';
+            const selectedDiv = document.getElementById('studentDivisionFilter')?.value || '';
             const countDiv = document.getElementById('studentsCount');
 
-            if (!searchText) {
-                displayStudents(allStudentsData);
-                if (countDiv) countDiv.textContent = `Total: ${allStudentsData.length} students`;
-                return;
+            let filtered = allStudentsData;
+            if (selectedDiv) {
+                filtered = filtered.filter(student => (student.division || '').toUpperCase() === selectedDiv.toUpperCase());
             }
 
-            const filtered = allStudentsData.filter(student => student.name.toLowerCase().includes(searchText) ||
-                student.enrollment.toLowerCase().includes(searchText) ||
-                student.class.toLowerCase().includes(searchText) ||
-                student.division.toLowerCase().includes(searchText)
-            );
+            if (searchText) {
+                filtered = filtered.filter(student => (student.name || '').toLowerCase().includes(searchText) ||
+                    (student.enrollment || '').toLowerCase().includes(searchText) ||
+                    (student.class || '').toLowerCase().includes(searchText) ||
+                    (student.division || '').toLowerCase().includes(searchText) ||
+                    (student.batch || '').toLowerCase().includes(searchText)
+                );
+            }
 
             displayStudents(filtered);
-            if (countDiv) countDiv.textContent = `Showing: ${filtered.length} of ${allStudentsData.length} students`;
+            if (countDiv) {
+                countDiv.textContent = (selectedDiv || searchText)
+                    ? `Showing: ${filtered.length} of ${allStudentsData.length} students`
+                    : `Total: ${allStudentsData.length} students`;
+            }
         }
 
         function filterResults() {
@@ -2135,11 +2201,12 @@ Add 5 Blank
                 
                 if(p === 'ca_unit1' || p === 'ipa1') { name = "Continuous Assessment - IPA 1 (CO1, CO2, CO3)"; cos = [1,2,3]; strips = 3; marks = 4; }
                 else if(p === 'ca_unit2' || p === 'ipa2') { name = "Continuous Assessment - IPA 2 (CO4, CO5)"; cos = [4,5]; strips = 2; marks = 4; }
+                else if(p === 'ca_assignment' || p === 'assignment') { name = "Assignment Exam (CO1-5)"; cos = [1,2,3,4,5]; strips = 5; marks = 1; }
                 else if(p === 'ese_full' || p === 'ese') { name = "End Semester Examination (CO1-5)"; cos = [1,2,3,4,5]; strips = 5; marks = 5; }
                 else if(p === 'ca_full') { name = "Continuous Assessment - Full (CO1-5)"; cos = [1,2,3,4,5]; strips = 5; marks = 4; }
                 
                 if (document.getElementById('examName')) document.getElementById('examName').value = name;
-                if (document.getElementById('examModalTitle')) document.getElementById('examModalTitle').textContent = p.includes('ese') ? 'Create ESE Exam' : 'Create CA Exam';
+                if (document.getElementById('examModalTitle')) document.getElementById('examModalTitle').textContent = p.includes('ese') ? 'Create ESE Exam' : (p.includes('assignment') ? 'Create Assignment Exam' : 'Create CA Exam');
                 
                 // Set Strip Metadata
                 modal.dataset.strips = strips;
@@ -2793,10 +2860,13 @@ Template
                     return;
                 }
 
+                const preset = document.getElementById('examModal').dataset.preset || '';
+                const examType = preset.includes('ese') ? 'ese' : (preset.includes('assignment') ? 'assignment' : 'ca');
+
                 const examRef = await window.addDoc(window.collection(window.db, 'exams'), {
                     name,
                     subjectId,
-                    examType: document.getElementById('examModal').dataset.preset?.includes('ese') ? 'ese' : 'ca',
+                    examType,
                     courseOutcomes,
                     lessons,
                     totalMarks,
@@ -2997,7 +3067,7 @@ Template
             const resultsSelect = document.getElementById('resultsExam');
             const importSelect = document.getElementById('coordImportExamSelect');
 
-            tbody.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
             if (resultsSelect) {
                 resultsSelect.innerHTML = '<option value="">Select exam</option>';
             }
@@ -3008,22 +3078,25 @@ Template
             try {
                 const year = document.getElementById('academicYear').value;
                 const semester = document.getElementById('semester').value;
+                const coordDept = window.currentUser?.department;
+
                 let snapshot;
+                let baseQuery = window.query(window.collection(window.db, 'exams'),
+                    window.where('academicYear', '==', year),
+                    window.where('semester', '==', semester));
+
+                if (coordDept) {
+                    baseQuery = window.query(baseQuery, window.where('department', '==', coordDept));
+                }
+
                 try {
-                    snapshot = await window.getDocs(window.query(window.collection(window.db, 'exams'),
-                        window.where('academicYear', '==', year),
-                        window.where('semester', '==', semester),
-                        window.orderBy('createdAt', 'desc'),
-                        window.limit(50)));
+                    snapshot = await window.getDocs(window.query(baseQuery, window.orderBy('createdAt', 'desc'), window.limit(50)));
                 } catch (idxErr) {
                     // Fallback if index is missing: Fetch without orderBy
                     console.warn("Index missing, falling back to unsorted fetch:", idxErr);
-                    snapshot = await window.getDocs(window.query(window.collection(window.db, 'exams'),
-                        window.where('academicYear', '==', year),
-                        window.where('semester', '==', semester),
-                        window.limit(50)));
+                    snapshot = await window.getDocs(window.query(baseQuery, window.limit(50)));
                 }
-                tbody.innerHTML = '';
+                if (tbody) tbody.innerHTML = '';
 
                 for (const docSnap of snapshot.docs) {
                     const data = docSnap.data();
@@ -3110,29 +3183,38 @@ ${data.examType === 'ca' ? `<button class="btn btn-secondary btn-sm" onclick="re
 </div>
 </div> `;
 
-                if (exam.examType === 'ca') {
+                if (exam.examType === 'ca' || exam.examType === 'ese' || (exam.courseOutcomes && exam.courseOutcomes.length > 0)) {
                     if (exam.lessons && exam.lessons.length > 0) {
                         html += `<div style="margin-bottom:16px;"><h4 style="color:#374151;margin:0 0 8px;">Question Bank</h4>`;
                         exam.lessons.forEach((l, li) => {
                             html += `
  <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
 <div style="font-weight:700;color:#1f2937;margin-bottom:4px;">Lesson ${li + 1}: ${l.name}</div>
-<div style="color:#6b7280;font-size:12px;margin-bottom:4px;">${l.questions.length} questions</div> ${l.questions.map((q, qi) => `<div style="font-size:13px;color:#374151;padding:2px 0;">${qi + 1}. ${q}</div>`).join('')}
+<div style="color:#6b7280;font-size:12px;margin-bottom:4px;">${l.questions ? l.questions.length : 0} questions</div> ${l.questions ? l.questions.map((q, qi) => `<div style="font-size:13px;color:#374151;padding:2px 0;">${qi + 1}. ${q}</div>`).join('') : ''}
 </div> `;
                         });
                         html += `</div>`;
                     }
-                    html += `<h4 style="color:#374151;margin:0 0 8px;">Course Outcomes</h4>`;
-                    exam.courseOutcomes?.forEach((co, ci) => {
-                        html += `
+                    if (exam.courseOutcomes && exam.courseOutcomes.length > 0) {
+                        html += `<h4 style="color:#374151;margin:0 0 8px;">Course Outcomes</h4>`;
+                        exam.courseOutcomes?.forEach((co, ci) => {
+                            html += `
  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
 <div style="font-weight:700;color:#1e40af;margin-bottom:4px;">${co.name}</div>
 <div style="font-size:13px;color:#374151;margin-bottom:4px;">${co.description || ''}</div>
 <div style="font-size:12px;color:#6b7280;">Source: ${co.lessonName || 'N/A'} | ${co.questionsPerStudent || 1} question(s) per student | Pool: ${co.questionPool?.length || 0} questions</div>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"> ${co.criteria?.map(c => `<span style="background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 8px;font-size:12px;">${c.name}: ${c.maxMarks}</span>`).join('')}
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"> ${co.criteria?.map(c => `<span style="background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 8px;font-size:12px;">${c.name}: ${c.maxMarks}m</span>`).join('')}
 </div>
 </div> `;
-                    });
+                        });
+                    }
+                    if (exam.criteria && exam.criteria.length > 0) {
+                        html += `<h4 style="color:#374151;margin:12px 0 8px;">Evaluation Criteria</h4>`;
+                        exam.criteria.forEach(c => {
+                            html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;margin-bottom:6px;display:flex;justify-content:space-between;">
+<span>${c.name}</span><span style="font-weight:700;">${c.maxMarks} marks</span></div>`;
+                        });
+                    }
                 } else {
                     html += `<h4 style="color:#374151;margin:0 0 8px;">Criteria</h4>`;
                     exam.criteria?.forEach(c => {
@@ -3162,18 +3244,30 @@ ${data.examType === 'ca' ? `<button class="btn btn-secondary btn-sm" onclick="re
             const subjectId = document.getElementById('assignSubject').value;
 
             if (!email || !subjectId) {
-                showToast('Please fill in all fields', "danger");
+                showToast('Please fill in all required fields (Teacher and Subject)', "danger");
                 return;
             }
 
+            const assignClassEl = document.getElementById('assignClass');
+            const assignClassVal = assignClassEl ? (assignClassEl.options ? (assignClassEl.options[assignClassEl.selectedIndex]?.dataset?.code || assignClassEl.options[assignClassEl.selectedIndex]?.text?.split(' - ')[0] || assignClassEl.value) : assignClassEl.value).trim() : '';
+
+            const assignDivEl = document.getElementById('assignDivision');
+            const assignDivVal = assignDivEl ? (assignDivEl.options ? (assignDivEl.options[assignDivEl.selectedIndex]?.dataset?.name || assignDivEl.options[assignDivEl.selectedIndex]?.text?.replace('Div ', '') || assignDivEl.value) : assignDivEl.value).trim() : '';
+
+            const assignBatchVal = document.getElementById('assignBatch')?.value?.trim() || '';
+
             try {
                 const subjectDoc = await window.getDoc(window.doc(window.db, 'subjects', subjectId));
-                const subjectData = subjectDoc.data();
+                const subjectData = subjectDoc.exists() ? subjectDoc.data() : {};
+
+                const targetClass = assignClassVal || subjectData.class || '';
+                const targetDiv = assignDivVal || subjectData.division || '';
+
                 const duplicateCheck = await window.getDocs(window.query(window.collection(window.db, 'teacher_assignments'),
                     window.where('teacherEmail', '==', email),
                     window.where('subjectId', '==', subjectId),
-                    window.where('class', '==', subjectData.class),
-                    window.where('division', '==', subjectData.division)));
+                    window.where('class', '==', targetClass),
+                    window.where('division', '==', targetDiv)));
 
                 if (!duplicateCheck.empty) {
                     showToast('This teacher is already assigned to this subject for this class and division!', "danger");
@@ -3183,8 +3277,9 @@ ${data.examType === 'ca' ? `<button class="btn btn-secondary btn-sm" onclick="re
                 await window.addDoc(window.collection(window.db, 'teacher_assignments'), {
                     teacherEmail: email,
                     subjectId,
-                    class: subjectData.class,
-                    division: subjectData.division,
+                    class: targetClass,
+                    division: targetDiv,
+                    batch: assignBatchVal || subjectData.batch || '',
                     assignedBy: window.currentUser.uid,
                     assignedAt: new Date().toISOString()
                 });
@@ -3440,6 +3535,9 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             } else if (section === 'myquestions') {
                 document.getElementById('teacherMyquestions').classList.add('active');
                 loadTeacherQuestionsTab();
+            } else if (section === 'coattainment') {
+                document.getElementById('teacherCoattainment').classList.add('active');
+                loadCOAttainmentPage('teacher');
             }
             if (btn) btn.classList.add('active');
         }
@@ -4212,8 +4310,9 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             if (importClassSelect) importClassSelect.innerHTML = '<option value="">Select Class</option>';
 
             try {
+                const teacherEmail = window.currentUser?.email || '';
                 const assignmentsSnap = await window.getDocs(window.query(window.collection(window.db, 'teacher_assignments'),
-                    window.where('teacherEmail', '==', window.currentUser.email)));
+                    window.where('teacherEmail', '==', teacherEmail)));
                 tbody.innerHTML = '';
 
                 if (assignmentsSnap.empty) {
@@ -5220,11 +5319,15 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     if (divisionsSnap.empty) {
                         html += '<p style="color: #6b7280; margin-left: 16px;">No divisions added yet</p>';
                     } else {
-                        html += '<table style="margin-top: 8px;"><thead><tr><th>Division</th><th>Class Teacher</th><th>Students</th></tr></thead><tbody>';
+                        html += '<table style="margin-top: 8px;"><thead><tr><th>Division</th><th>Batches</th><th>Class Teacher</th><th>Students</th></tr></thead><tbody>';
 
                         for (const divDoc of divisionsSnap.docs) {
                             const divData = divDoc.data();
                             if (divData.isDeleted) continue;
+
+                            const batchesSnap = await window.getDocs(window.query(window.collection(window.db, 'batches'),
+                                window.where('divisionId', '==', divDoc.id)));
+                            const batchNames = batchesSnap.docs.map(b => b.data().name).sort().join(', ') || '-';
 
                             const divStudents = await window.getDocs(window.query(window.collection(window.db, 'students'),
                                 window.where('class', '==', classData.code),
@@ -5233,6 +5336,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                             html += `
  <tr>
 <td><strong>${divData.name}</strong></td>
+<td><span class="badge badge-secondary">${batchNames}</span></td>
 <td>${divData.classTeacher || '-'}</td>
 <td><span class="badge badge-success">${divStudents.size}</span></td>
 </tr> `;
@@ -5368,42 +5472,48 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 const subjectDoc = await window.getDoc(window.doc(window.db, 'subjects', examData.subjectId));
                 const subjectData = subjectDoc.exists() ? subjectDoc.data() : {};
                 const studentsSnap = await window.getDocs(window.query(window.collection(window.db, 'students'),
-                    window.where('class', '==', subjectData.class),
-                    window.where('division', '==', subjectData.division)));
+                    window.where('class', '==', subjectData.class || ''),
+                    window.where('division', '==', subjectData.division || '')));
 
                 if (studentsSnap.empty) {
                     showToast('No students found for this exam', "warning");
                     return;
                 }
-                let csv = 'Enrollment,Name';
 
+                const headers = ['Enrollment', 'Name'];
                 if (examData.examType === 'standard') {
-                    examData.criteria.forEach(criterion => {
-                        csv += `,${escapeCSV(criterion.name)} (Max: ${criterion.maxMarks})`;
+                    (examData.criteria || []).forEach(criterion => {
+                        headers.push(`${criterion.name} (Max: ${criterion.maxMarks})`);
                     });
                 } else if (examData.examType === 'ca') {
-                    examData.courseOutcomes.forEach(co => {
-                        co.criteria.forEach(criterion => {
-                            csv += `,${co.name}-${criterion.name} (Max: ${criterion.maxMarks})`;
+                    (examData.courseOutcomes || []).forEach(co => {
+                        (co.criteria || []).forEach(criterion => {
+                            headers.push(`${co.name}-${criterion.name} (Max: ${criterion.maxMarks})`);
                         });
                     });
                 }
-                csv += '\n';
+
+                const rows = [headers];
                 studentsSnap.forEach(docSnap => {
                     const student = docSnap.data();
-                    csv += `${student.enrollment},${escapeCSV(sanitizeString(student.name, 100))}`;
-                    if (examData.examType === 'standard') {
-                        examData.criteria.forEach(() => csv += ',');
-                    } else if (examData.examType === 'ca') {
-                        examData.courseOutcomes.forEach(co => {
-                            co.criteria.forEach(() => csv += ',');
-                        });
+                    const row = [student.enrollment || '', sanitizeString(student.name || '', 100)];
+                    for (let i = 2; i < headers.length; i++) {
+                        row.push('');
                     }
-                    csv += '\n';
+                    rows.push(row);
                 });
 
-                (function () { const _wb = XLSX.utils.book_new(); const _rows = csv.trim().split('\n').map(r => r.split(',')); XLSX.utils.book_append_sheet(_wb, XLSX.utils.aoa_to_sheet(_rows), 'Data'); XLSX.writeFile(_wb, `template_${examData.name}_${Date.now()}.xlsx`); })();
-                showToast('Blank template downloaded!\n\nFill in the marks and upload to import.', "success");
+                const ws = XLSX.utils.aoa_to_sheet(rows);
+                ws['!cols'] = [
+                    { wch: 18 }, // Enrollment
+                    { wch: 28 }, // Name
+                    ...headers.slice(2).map(() => ({ wch: 24 }))
+                ];
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Marks Template');
+                XLSX.writeFile(wb, `Template_${(examData.name || 'Exam').replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.xlsx`);
+                showToast('✅ Blank template downloaded!\n\nFill in the marks and upload to import.', "success");
             } catch (error) {
                 showToast('Error: ' + error.message, 'danger');
             }
@@ -5428,45 +5538,48 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 const subjectData = subjectDoc.exists() ? subjectDoc.data() : {};
 
                 const studentsSnap = await window.getDocs(window.query(window.collection(window.db, 'students'),
-                    window.where('class', '==', subjectData.class),
-                    window.where('division', '==', subjectData.division)));
+                    window.where('class', '==', subjectData.class || ''),
+                    window.where('division', '==', subjectData.division || '')));
 
                 if (studentsSnap.empty) {
                     showToast('No students found for this exam', "warning");
                     return;
                 }
 
-                let csv = 'Enrollment,Name';
-
+                const headers = ['Enrollment', 'Name'];
                 if (examData.examType === 'standard') {
-                    examData.criteria.forEach(criterion => {
-                        csv += `,${escapeCSV(criterion.name)} (Max: ${criterion.maxMarks})`;
+                    (examData.criteria || []).forEach(criterion => {
+                        headers.push(`${criterion.name} (Max: ${criterion.maxMarks})`);
                     });
                 } else if (examData.examType === 'ca') {
-                    examData.courseOutcomes.forEach(co => {
-                        co.criteria.forEach(criterion => {
-                            csv += `,${co.name}-${criterion.name} (Max: ${criterion.maxMarks})`;
+                    (examData.courseOutcomes || []).forEach(co => {
+                        (co.criteria || []).forEach(criterion => {
+                            headers.push(`${co.name}-${criterion.name} (Max: ${criterion.maxMarks})`);
                         });
                     });
                 }
-                csv += '\n';
 
+                const rows = [headers];
                 studentsSnap.forEach(docSnap => {
                     const student = docSnap.data();
-                    csv += `${student.enrollment},${escapeCSV(sanitizeString(student.name, 100))}`;
-
-                    if (examData.examType === 'standard') {
-                        examData.criteria.forEach(() => csv += ',');
-                    } else if (examData.examType === 'ca') {
-                        examData.courseOutcomes.forEach(co => {
-                            co.criteria.forEach(() => csv += ',');
-                        });
+                    const row = [student.enrollment || '', sanitizeString(student.name || '', 100)];
+                    for (let i = 2; i < headers.length; i++) {
+                        row.push('');
                     }
-                    csv += '\n';
+                    rows.push(row);
                 });
 
-                (function () { const _wb = XLSX.utils.book_new(); const _rows = csv.trim().split('\n').map(r => r.split(',')); XLSX.utils.book_append_sheet(_wb, XLSX.utils.aoa_to_sheet(_rows), 'Data'); XLSX.writeFile(_wb, `template_${examData.name}_${Date.now()}.xlsx`); })();
-                showToast('Blank template downloaded!\n\nFill in the marks and upload to import.', "success");
+                const ws = XLSX.utils.aoa_to_sheet(rows);
+                ws['!cols'] = [
+                    { wch: 18 }, // Enrollment
+                    { wch: 28 }, // Name
+                    ...headers.slice(2).map(() => ({ wch: 24 }))
+                ];
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Marks Template');
+                XLSX.writeFile(wb, `Template_${(examData.name || 'Exam').replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.xlsx`);
+                showToast('✅ Blank template downloaded!\n\nFill in the marks and upload to import.', "success");
             } catch (error) {
                 showToast('Error: ' + error.message, 'danger');
             }
@@ -6043,7 +6156,6 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             if (loader) loader.style.display = 'none';
         }
 
-        // HOD: Load Results
         async function loadResultsForHOD() {
             if (!window.currentUser || window.currentUser.role !== 'hod') {
                 console.error('Unauthorized: Not HOD');
@@ -6058,45 +6170,38 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 }
                 resultsContainer.innerHTML = '';
 
-                const hodDept = window.currentUser.department || window.currentUser.departmentId;
-                if (!hodDept) {
-                    showToast('Department not assigned to HOD', 'danger');
-                    hideLoader('hodResultsLoader');
-                    return;
-                }
+                const hodDept = window.currentUser.department || window.currentUser.departmentId || '';
 
-                // BUG-15 FIX: Compound query + orderBy requires composite index — add fallback
-                let examsSnapshot;
-                try {
-                    const examsQuery = (function () {
-                        const yr = document.getElementById('academicYear')?.value || '';
-                        const sm = document.getElementById('semester')?.value || '';
-                        let q = window.collection(window.db, 'exams');
-                        let constraints = [window.where('status', '==', 'FINALIZED')];
-                        if (yr) constraints.push(window.where('academicYear', '==', yr));
-                        if (sm) constraints.push(window.where('semester', '==', sm));
-                        if (hodDept) constraints.push(window.where('department', '==', hodDept));
-                        return window.query(q, ...constraints, window.orderBy('createdAt', 'desc'));
-                    })();
-                    examsSnapshot = await window.getDocs(examsQuery);
-                } catch (idxErr) {
-                    console.warn('[HOD Results] Missing index, falling back to unordered fetch:', idxErr.message);
-                    const yr = document.getElementById('academicYear')?.value || '';
-                    const sm = document.getElementById('semester')?.value || '';
-                    let q = window.collection(window.db, 'exams');
-                    let constraints = [window.where('status', '==', 'FINALIZED')];
-                    if (yr) constraints.push(window.where('academicYear', '==', yr));
-                    if (sm) constraints.push(window.where('semester', '==', sm));
-                    if (hodDept) constraints.push(window.where('department', '==', hodDept));
-                    const fallbackSnap = await window.getDocs(window.query(q, ...constraints));
-                    const sortedDocs = fallbackSnap.docs.slice().sort((a, b) => {
-                        return (b.data().createdAt || '').localeCompare(a.data().createdAt || '');
-                    });
-                    examsSnapshot = { docs: sortedDocs, empty: sortedDocs.length === 0 };
+                // 1. Fetch subjects for HOD department
+                let deptSubjectIds = new Set();
+                let deptSubjectMap = {};
+                let subjectsQuery = window.collection(window.db, 'subjects');
+                if (hodDept) {
+                    subjectsQuery = window.query(subjectsQuery, window.where('department', '==', hodDept));
                 }
+                const subjectsSnap = await window.getDocs(subjectsQuery);
+                subjectsSnap.forEach(d => {
+                    deptSubjectIds.add(d.id);
+                    deptSubjectMap[d.id] = d.data();
+                });
 
-                if (examsSnapshot.empty) {
-                    resultsContainer.innerHTML = '<p class="no-data">No finalized results available in your department.</p>';
+                // 2. Fetch all exams
+                const allExamsSnap = await window.getDocs(window.collection(window.db, 'exams'));
+                let filteredExams = [];
+
+                allExamsSnap.forEach(d => {
+                    const data = d.data();
+                    const matchesDept = !hodDept || data.department === hodDept || deptSubjectIds.has(data.subjectId);
+                    if (matchesDept) {
+                        filteredExams.push({ id: d.id, ...data });
+                    }
+                });
+
+                // Sort descending by createdAt
+                filteredExams.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+                if (filteredExams.length === 0) {
+                    resultsContainer.innerHTML = '<p class="no-data" style="text-align:center;padding:40px;color:var(--gray-400);">No exam results available in your department.</p>';
                     hideLoader('hodResultsLoader');
                     return;
                 }
@@ -6104,33 +6209,35 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 const table = document.createElement('table');
                 table.className = 'results-table';
                 table.innerHTML = `
- <thead>
- <tr>
- <th>Exam Name</th>
- <th>Subject</th>
- <th>Class</th>
- <th>Division</th>
- <th>Type</th>
- <th>Students</th>
- <th>Finalized</th>
- <th>Actions</th>
- </tr>
- </thead>
- <tbody id="hodResultsTableBody"></tbody>
- `;
+                    <thead>
+                        <tr>
+                            <th>Exam Name</th>
+                            <th>Subject</th>
+                            <th>Class</th>
+                            <th>Division</th>
+                            <th>Type</th>
+                            <th>Students</th>
+                            <th>Finalized</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hodResultsTableBody"></tbody>
+                `;
                 resultsContainer.appendChild(table);
 
                 const tbody = document.getElementById('hodResultsTableBody');
-                for (const examDoc of examsSnapshot.docs) {
-                    const examData = examDoc.data();
-                    const examId = examDoc.id;
+                for (const examData of filteredExams) {
+                    const examId = examData.id;
+                    let subjectData = deptSubjectMap[examData.subjectId];
+                    if (!subjectData && examData.subjectId) {
+                        const subDoc = await window.getDoc(window.doc(window.db, 'subjects', examData.subjectId));
+                        if (subDoc.exists()) subjectData = subDoc.data();
+                    }
+                    subjectData = subjectData || {};
 
-                    const subjectDoc = await window.getDoc(window.doc(window.db, 'subjects', examData.subjectId));
-                    const subjectName = subjectDoc.exists() ? subjectDoc.data().name : 'Unknown';
-
-                    const _subjectDataForRow = subjectDoc.exists() ? subjectDoc.data() : {};
-                    const className = _subjectDataForRow.class || 'N/A';
-                    const divisionName = _subjectDataForRow.division || 'N/A';
+                    const subjectName = subjectData.name || examData.subjectName || 'Unknown';
+                    const className = subjectData.class || examData.class || 'N/A';
+                    const divisionName = subjectData.division || examData.division || 'N/A';
 
                     const resultsQuery = window.query(
                         window.collection(window.db, 'results'),
@@ -6138,49 +6245,45 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     );
                     const resultsSnapshot = await window.getDocs(resultsQuery);
 
-                    // BUG FIX: Handle both string and Timestamp types for finalizedAt
                     let finalizedDate = 'N/A';
                     if (examData.finalizedAt) {
                         try {
-                            if (typeof examData.finalizedAt === 'string') {
-                                finalizedDate = new Date(examData.finalizedAt).toLocaleString();
-                            } else if (examData.finalizedAt.toDate) {
-                                finalizedDate = examData.finalizedAt.toDate().toLocaleString();
-                            }
+                            if (typeof examData.finalizedAt === 'string') finalizedDate = new Date(examData.finalizedAt).toLocaleString();
+                            else if (examData.finalizedAt.toDate) finalizedDate = examData.finalizedAt.toDate().toLocaleString();
                         } catch (e) {
-                            finalizedDate = 'Invalid Date';
+                            finalizedDate = 'N/A';
                         }
+                    } else if (examData.createdAt) {
+                        try { finalizedDate = new Date(examData.createdAt).toLocaleDateString(); } catch (e) {}
                     }
 
                     const row = document.createElement('tr');
                     row.innerHTML = `
- <td>${examData.name || 'N/A'}</td>
- <td>${subjectName}</td>
- <td>${className}</td>
- <td>${divisionName}</td>
- <td><span class="badge badge-${examData.examType === 'standard' ? 'primary' : 'secondary'}">${examData.examType?.toUpperCase() || 'N/A'}</span></td>
- <td>${resultsSnapshot.size}</td>
- <td>${finalizedDate}</td>
- <td class="action-buttons">
- <button class="btn btn-sm btn-info" onclick="previewEvaluationSubmission('${examId}', true)">Monitor</button>
- <button class="btn btn-sm btn-success" onclick="exportResults('${examId}', 'excel')">Excel</button>
- <button class="btn btn-sm btn-danger" onclick="exportResults('${examId}', 'pdf')">PDF</button>
- </td>
- `;
+                        <td style="font-weight:600;">${examData.name || 'N/A'}</td>
+                        <td>${subjectName}</td>
+                        <td>${className}</td>
+                        <td>${divisionName}</td>
+                        <td><span class="badge badge-${examData.examType === 'standard' ? 'primary' : 'secondary'}">${(examData.examType || 'CA').toUpperCase()}</span></td>
+                        <td><span class="badge badge-info">${resultsSnapshot.size}</span></td>
+                        <td>${finalizedDate}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-sm btn-info" onclick="previewEvaluationSubmission('${examId}', true)">Monitor</button>
+                            <button class="btn btn-sm btn-success" onclick="exportResults('${examId}', 'excel')">Excel</button>
+                            <button class="btn btn-sm btn-danger" onclick="exportResults('${examId}', 'pdf')">PDF</button>
+                        </td>
+                    `;
                     tbody.appendChild(row);
                 }
             } catch (error) {
                 console.error('Error loading HOD results:', error);
                 showToast('Failed to load results: ' + error.message, 'danger');
             } finally {
-                // BUG-15 FIX: was using wrong loader ID 'coordinatorResultsLoader' — fixed to 'hodResultsLoader'
                 hideLoader('hodResultsLoader');
             }
         }
 
-        // Coordinator: Load Results
         async function loadResultsForCoordinator() {
-            if (!window.currentUser || window.currentUser.role !== 'coordinator') {
+            if (!window.currentUser || (window.currentUser.role !== 'coordinator' && window.currentUser.role !== 'coord')) {
                 console.error('Unauthorized: Not Coordinator');
                 return;
             }
@@ -6193,88 +6296,73 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 }
                 resultsContainer.innerHTML = '';
 
-                // Load all finalized exams for current academic year/semester
-                const coordDept = window.currentUser.department || window.currentUser.departmentId;
-                const year = document.getElementById('academicYear')?.value || '';
-                const sem = document.getElementById('semester')?.value || '';
-                
-                // BUG-04 FIX: Compound query + orderBy requires composite index — add in-memory sort fallback
-                let examsSnapshot;
-                try {
-                    const examsQuery = (function() {
-                        let q = window.collection(window.db, 'exams');
-                        let constraints = [window.where('status', '==', 'FINALIZED')];
-                        if (year) constraints.push(window.where('academicYear', '==', year));
-                        if (sem) constraints.push(window.where('semester', '==', sem));
-                        if (coordDept) constraints.push(window.where('department', '==', coordDept));
-                        return window.query(q, ...constraints, window.orderBy('createdAt', 'desc'));
-                    })();
-                    examsSnapshot = await window.getDocs(examsQuery);
-                } catch (idxErr) {
-                    console.warn('[Coord Results] Missing index, falling back to unordered fetch:', idxErr.message);
-                    let q = window.collection(window.db, 'exams');
-                    let constraints = [window.where('status', '==', 'FINALIZED')];
-                    if (year) constraints.push(window.where('academicYear', '==', year));
-                    if (sem) constraints.push(window.where('semester', '==', sem));
-                    if (coordDept) constraints.push(window.where('department', '==', coordDept));
-                    const fallbackSnap = await window.getDocs(window.query(q, ...constraints));
-                    const sortedDocs = fallbackSnap.docs.slice().sort((a, b) => {
-                        return (b.data().createdAt || '').localeCompare(a.data().createdAt || '');
-                    });
-                    examsSnapshot = { docs: sortedDocs, empty: sortedDocs.length === 0 };
-                }
-                let allExams = examsSnapshot.docs;
+                const coordDept = window.currentUser.department || window.currentUser.departmentId || '';
 
-                if (allExams.length === 0) {
-                    resultsContainer.innerHTML = '<p class="no-data">No finalized results available for your subjects.</p>';
+                // 1. Fetch subjects for Coordinator department
+                let deptSubjectIds = new Set();
+                let deptSubjectMap = {};
+                let subjectsQuery = window.collection(window.db, 'subjects');
+                if (coordDept) {
+                    subjectsQuery = window.query(subjectsQuery, window.where('department', '==', coordDept));
+                }
+                const subjectsSnap = await window.getDocs(subjectsQuery);
+                subjectsSnap.forEach(d => {
+                    deptSubjectIds.add(d.id);
+                    deptSubjectMap[d.id] = d.data();
+                });
+
+                // 2. Fetch all exams
+                const allExamsSnap = await window.getDocs(window.collection(window.db, 'exams'));
+                let filteredExams = [];
+
+                allExamsSnap.forEach(d => {
+                    const data = d.data();
+                    const matchesDept = !coordDept || data.department === coordDept || deptSubjectIds.has(data.subjectId);
+                    if (matchesDept) {
+                        filteredExams.push({ id: d.id, ...data });
+                    }
+                });
+
+                filteredExams.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+                if (filteredExams.length === 0) {
+                    resultsContainer.innerHTML = '<p class="no-data" style="text-align:center;padding:40px;color:var(--gray-400);">No finalized results available for your subjects.</p>';
                     hideLoader('coordinatorResultsLoader');
                     return;
-                }
-
-                // BUG-05 FIX: Populate coordinatorResultsClassFilter dropdown with unique class values
-                const classFilterSelect = document.getElementById('coordinatorResultsClassFilter');
-                if (classFilterSelect) {
-                    const existingFilter = classFilterSelect.value;
-                    classFilterSelect.innerHTML = '<option value="">All Classes</option>';
-                    const uniqueClasses = new Set();
-                    // We'll populate after we fetch subjects below — collect them now
-                    allExams.forEach(async (examDoc) => {
-                        // Populate lazily in the loop below
-                    });
                 }
 
                 const table = document.createElement('table');
                 table.className = 'results-table';
                 table.innerHTML = `
- <thead>
- <tr>
- <th>Exam Name</th>
- <th>Subject</th>
- <th>Class</th>
- <th>Division</th>
- <th>Type</th>
- <th>Students</th>
- <th>Finalized</th>
- <th>Actions</th>
- </tr>
- </thead>
- <tbody id="coordinatorResultsTableBody"></tbody>
- `;
+                    <thead>
+                        <tr>
+                            <th>Exam Name</th>
+                            <th>Subject</th>
+                            <th>Class</th>
+                            <th>Division</th>
+                            <th>Type</th>
+                            <th>Students</th>
+                            <th>Finalized</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="coordinatorResultsTableBody"></tbody>
+                `;
                 resultsContainer.appendChild(table);
 
                 const tbody = document.getElementById('coordinatorResultsTableBody');
-                const _classSet = new Set(); // BUG-05: collect unique class names for filter
-                for (const examDoc of allExams) {
-                    const examData = examDoc.data();
-                    const examId = examDoc.id;
+                for (const examData of filteredExams) {
+                    const examId = examData.id;
+                    let subjectData = deptSubjectMap[examData.subjectId];
+                    if (!subjectData && examData.subjectId) {
+                        const subDoc = await window.getDoc(window.doc(window.db, 'subjects', examData.subjectId));
+                        if (subDoc.exists()) subjectData = subDoc.data();
+                    }
+                    subjectData = subjectData || {};
 
-                    const subjectDoc = await window.getDoc(window.doc(window.db, 'subjects', examData.subjectId));
-                    const subjectName = subjectDoc.exists() ? subjectDoc.data().name : 'Unknown';
-
-                    const _subjectDataForRow = subjectDoc.exists() ? subjectDoc.data() : {};
-                    const className = _subjectDataForRow.class || 'N/A';
-                    const divisionName = _subjectDataForRow.division || 'N/A';
-                    if (className !== 'N/A') _classSet.add(className);
+                    const subjectName = subjectData.name || examData.subjectName || 'Unknown';
+                    const className = subjectData.class || examData.class || 'N/A';
+                    const divisionName = subjectData.division || examData.division || 'N/A';
 
                     const resultsQuery = window.query(
                         window.collection(window.db, 'results'),
@@ -6282,50 +6370,34 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     );
                     const resultsSnapshot = await window.getDocs(resultsQuery);
 
-                    // BUG FIX: Handle both string and Timestamp types for finalizedAt
                     let finalizedDate = 'N/A';
                     if (examData.finalizedAt) {
                         try {
-                            if (typeof examData.finalizedAt === 'string') {
-                                finalizedDate = new Date(examData.finalizedAt).toLocaleString();
-                            } else if (examData.finalizedAt.toDate) {
-                                finalizedDate = examData.finalizedAt.toDate().toLocaleString();
-                            }
+                            if (typeof examData.finalizedAt === 'string') finalizedDate = new Date(examData.finalizedAt).toLocaleString();
+                            else if (examData.finalizedAt.toDate) finalizedDate = examData.finalizedAt.toDate().toLocaleString();
                         } catch (e) {
-                            finalizedDate = 'Invalid Date';
+                            finalizedDate = 'N/A';
                         }
+                    } else if (examData.createdAt) {
+                        try { finalizedDate = new Date(examData.createdAt).toLocaleDateString(); } catch (e) {}
                     }
 
                     const row = document.createElement('tr');
                     row.innerHTML = `
- <td>${examData.name || 'N/A'}</td>
- <td>${subjectName}</td>
- <td>${className}</td>
- <td>${divisionName}</td>
- <td><span class="badge badge-${examData.examType === 'standard' ? 'primary' : 'secondary'}">${examData.examType?.toUpperCase() || 'N/A'}</span></td>
- <td>${resultsSnapshot.size}</td>
- <td>${finalizedDate}</td>
- <td class="action-buttons">
- <button class="btn btn-sm btn-info" onclick="previewEvaluationSubmission('${examId}', true)">Monitor</button>
- <button class="btn btn-sm btn-success" onclick="exportResults('${examId}', 'excel')">Excel</button>
- <button class="btn btn-sm btn-danger" onclick="exportResults('${examId}', 'pdf')">PDF</button>
- </td>
- `;
+                        <td style="font-weight:600;">${examData.name || 'N/A'}</td>
+                        <td>${subjectName}</td>
+                        <td>${className}</td>
+                        <td>${divisionName}</td>
+                        <td><span class="badge badge-${examData.examType === 'standard' ? 'primary' : 'secondary'}">${(examData.examType || 'CA').toUpperCase()}</span></td>
+                        <td><span class="badge badge-info">${resultsSnapshot.size}</span></td>
+                        <td>${finalizedDate}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-sm btn-info" onclick="previewEvaluationSubmission('${examId}', true)">Monitor</button>
+                            <button class="btn btn-sm btn-success" onclick="exportResults('${examId}', 'excel')">Excel</button>
+                            <button class="btn btn-sm btn-danger" onclick="exportResults('${examId}', 'pdf')">PDF</button>
+                        </td>
+                    `;
                     tbody.appendChild(row);
-                }
-
-                // BUG-05 FIX: Now populate the class filter with collected unique classes
-                const classFilterEl = document.getElementById('coordinatorResultsClassFilter');
-                if (classFilterEl && _classSet.size > 0) {
-                    const prevFilter = classFilterEl.value;
-                    classFilterEl.innerHTML = '<option value="">All Classes</option>';
-                    _classSet.forEach(cls => {
-                        const opt = document.createElement('option');
-                        opt.value = cls;
-                        opt.textContent = `Class ${cls}`;
-                        if (cls === prevFilter) opt.selected = true;
-                        classFilterEl.appendChild(opt);
-                    });
                 }
             } catch (error) {
                 console.error('Error loading Coordinator results:', error);
@@ -7697,6 +7769,12 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             return exportOfficialUniversityFormatExcel(examId);
         }
 
+        async function exportResultsCSV() {
+            const examId = document.getElementById('resultsExam')?.value || document.getElementById('teacherResultsExam')?.value || '';
+            if (!examId) { showToast('Please select an exam first', 'warning'); return; }
+            return exportOfficialUniversityFormatCSV(examId);
+        }
+
         async function exportResultsPDF() {
             const examId = document.getElementById('resultsExam')?.value || document.getElementById('teacherResultsExam')?.value || '';
             if (!examId) { showToast('Please select an exam first', 'warning'); return; }
@@ -8012,6 +8090,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
         window.exportUsersExcel = exportUsersExcel;
         window.exportAuditLogsExcel = exportAuditLogsExcel;
         window.exportResultsExcel = exportResultsExcel;
+        window.exportResultsCSV = exportResultsCSV;
         window.importResultsFromExcel = importResultsFromExcel;
         window.importCoordinatorResultsFromExcel = importCoordinatorResultsFromExcel;
 
@@ -8692,16 +8771,30 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             };
 
             const isTicked = (val) => {
-                if (!val) return false;
+                if (val == null) return false;
                 const s = String(val).trim().toLowerCase();
-                return ['✓', 'true', 'yes', '1', 'x', 'y', '✔', '☑'].includes(s) || s === 'true';
+                if (['', 'false', '0', 'no', 'n', '-', 'none', 'null', 'undefined'].includes(s)) return false;
+                return true;
             };
 
             const name = sanitizeString(get(['faculty name', 'facultyname', 'name', 'teacher name', 'teachername', 'full name', 'fullname']), 100);
+            const classVal = get(['class', 'classname', 'class name', 'year', 'section']);
             const division = get(['div', 'division', 'section']);
-            const batch1 = isTicked(get(['batch 1', 'batch1', 'b1', 'batch-1']));
-            const batch2 = isTicked(get(['batch 2', 'batch2', 'b2', 'batch-2']));
-            const batch3 = isTicked(get(['batch 3', 'batch3', 'b3', 'batch-3']));
+            let batch1 = isTicked(get(['batch 1', 'batch1', 'b1', 'batch-1']));
+            let batch2 = isTicked(get(['batch 2', 'batch2', 'b2', 'batch-2']));
+            let batch3 = isTicked(get(['batch 3', 'batch3', 'b3', 'batch-3']));
+
+            const batchSingle = get(['batch', 'batches']);
+            if (batchSingle) {
+                const s = batchSingle.toLowerCase();
+                if (s.includes('1') || s.includes('b1')) batch1 = true;
+                if (s.includes('2') || s.includes('b2')) batch2 = true;
+                if (s.includes('3') || s.includes('b3')) batch3 = true;
+                if (!batch1 && !batch2 && !batch3 && isTicked(batchSingle)) {
+                    batch1 = true;
+                }
+            }
+
             const email = get(['email', 'email address', 'emailaddress', 'mail']).toLowerCase();
             const phone = get(['number', 'phone', 'mobile', 'contact', 'mobile no', 'phone no', 'phoneno', 'numberno']);
 
@@ -8721,8 +8814,8 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             }
 
             const tickedCount = [batch1, batch2, batch3].filter(Boolean).length;
-            if (tickedCount < 2) {
-                errors.push(`Only ${tickedCount} batch(es) ticked — at least 2 required`);
+            if (tickedCount < 1) {
+                errors.push('At least 1 batch must be ticked');
             }
 
             const batches = [];
@@ -8733,6 +8826,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             return {
                 rowNum: idx + 2, // +2 because row 1 is header, +1 for 0-index
                 name,
+                classVal,
                 division,
                 batch1,
                 batch2,
@@ -8932,6 +9026,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                         name: faculty.name,
                         email: faculty.email,
                         role: 'teacher',
+                        class: faculty.classVal || '',
                         division: faculty.division,
                         batches: faculty.batches,
                         batch1: faculty.batch1,
@@ -9210,7 +9305,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 
         /**
          * Generates and downloads the official MIT ADT University formatted Excel Marksheet
-         * including Header, Rubrics Evaluation Matrix, CO breakdown, Total Marks, and Marks in Words.
+         * with 2 distinct sheets: Page 1 (Rubrics & Exam Details) and Page 2 (Student Evaluation Scores).
          */
         async function exportOfficialUniversityFormatExcel(examId) {
             if (!examId) {
@@ -9259,45 +9354,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 resultsSnap.forEach(d => { resultsMap[d.data().studentId] = d.data(); });
 
                 const teacherName = window.currentUser?.name || 'Prof. Faculty';
-
-                // Array of Arrays for Excel Sheet
-                const aoa = [];
-
-                // Page 1 Header Rows matching official template
-                aoa.push(['MIT ADT University, School of Computing, Pune']);
-                aoa.push(['Department of Computer Science and Engineering']);
                 const examTitle = examData.name || (examData.examType === 'ese' ? 'End Semester Examination May 2026' : 'Continuous Assessment Examination');
-                aoa.push([examTitle]);
-                aoa.push(['Jury Assessment Examination Mark Sheet']);
-                aoa.push([`Subject Code: ${subjectData.code || '23CSE1103R'}`, '', '', `Subject Name: ${subjectData.name || 'Jury Assessment Examination'}`]);
-                aoa.push([
-                    `Programme: B.Tech`,
-                    `Year: ${subjectData.class || 'FY'}`,
-                    `Semester: ${subjectData.semester || 'SEM-II'}`,
-                    `Branch: CSE/IT`,
-                    `Division: ${subjectData.division || 'SOC-03'}`,
-                    `Batch: ${subjectData.division || 'A'}`,
-                    `Date: ${new Date().toLocaleDateString()}`
-                ]);
-                aoa.push([
-                    `Name of Internal Examiner: ${teacherName}`,
-                    '',
-                    `Name of External Jury Member & Institute: External Examiner`,
-                    '',
-                    `Time: 9:00 am to 11:00 am`
-                ]);
-                aoa.push([]); // Spacer row 8
-
-                // Rubrics Matrix Header & Rows matching official template
-                aoa.push(['Criteria', 'Excellent (5-4 Marks)', 'Good (3 Marks)', 'Satisfactory (1-2 Marks)', 'Poor (0 Marks)']);
-
-                const defaultRubrics = [
-                    { name: 'CO1: Class, Object & Data Members', exc: 'Correct class created with proper data members and object creation', gd: 'Minor mistake in class/object', sat: 'Class created partially with missing members/object', pr: 'Class/object concept not implemented' },
-                    { name: 'CO2: Constructor & Function Implementation', exc: 'Constructor correctly initializes values and function performs required calculation', gd: 'Minor mistake in constructor or function logic', sat: 'Constructor/function partially implemented', pr: 'Constructor/function missing or incorrect' },
-                    { name: 'CO3: Inheritance & Function Overriding', exc: 'Correct inheritance and proper overriding of base class function in derived class', gd: 'Minor mistake in inheritance/overriding but concept works', sat: 'Inheritance used but overriding not properly shown', pr: 'Inheritance/overriding not implemented' },
-                    { name: 'CO4: Program Flow, Function Calling & Output', exc: 'All objects created, functions called correctly, and output is proper', gd: 'Minor mistake in calling or output format', sat: 'Partial function calling/output shown', pr: 'Program does not execute properly' },
-                    { name: 'CO5: Template Declaration', exc: 'Correct template function implemented and tested with required values', gd: 'Template works with minor syntax/logic issue', sat: 'Template partially implemented or tested incorrectly', pr: 'Template not used or incorrect' }
-                ];
 
                 const cos = (examData.courseOutcomes && examData.courseOutcomes.length > 0) ? examData.courseOutcomes : [
                     { name: 'CO1', criteria: [{ maxMarks: 5 }] },
@@ -9307,26 +9364,75 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     { name: 'CO5', criteria: [{ maxMarks: 5 }] }
                 ];
 
+                const defaultRubrics = [
+                    { name: 'CO1: Class & Object', exc: 'Correct class created with proper data members and object creation', gd: 'Minor mistake in class/object', sat: 'Class created partially with missing members/object', pr: 'Class/object concept not implemented' },
+                    { name: 'CO2: Constructor & Function', exc: 'Constructor correctly initializes values and function performs required calculation', gd: 'Minor mistake in constructor or function logic', sat: 'Constructor/function partially implemented', pr: 'Constructor/function missing or incorrect' },
+                    { name: 'CO3: Inheritance & Overriding', exc: 'Correct inheritance and proper overriding of base class function in derived class', gd: 'Minor mistake in inheritance/overriding but concept works', sat: 'Inheritance used but overriding not properly shown', pr: 'Inheritance/overriding not implemented' },
+                    { name: 'CO4: Program Flow & Output', exc: 'All objects created, functions called correctly, and output is proper', gd: 'Minor mistake in calling or output format', sat: 'Partial function calling/output shown', pr: 'Program does not execute properly' },
+                    { name: 'CO5: Template Declaration', exc: 'Correct template function implemented and tested with required values', gd: 'Template works with minor syntax/logic issue', sat: 'Template partially implemented or tested incorrectly', pr: 'Template not used or incorrect' }
+                ];
+
+                // ==========================================
+                // PAGE 1: RUBRICS & EXAM DETAILS SHEET
+                // ==========================================
+                const aoa1 = [];
+                aoa1.push(['MIT ADT UNIVERSITY, SCHOOL OF COMPUTING, PUNE']);
+                aoa1.push(['Department of Computer Science and Engineering']);
+                aoa1.push([examTitle]);
+                aoa1.push(['JURY ASSESSMENT EXAMINATION MARK SHEET']);
+                aoa1.push([]); // Spacer row 4
+
+                aoa1.push(['Subject Code:', subjectData.code || '23CSE1103R', 'Subject Name:', subjectData.name || 'Jury Assessment Examination', '']);
+                aoa1.push(['Programme:', 'B.Tech', 'Year:', subjectData.class || 'FY', `Semester: ${subjectData.semester || 'SEM-II'}`]);
+                aoa1.push(['Division:', subjectData.division || 'B', 'Batch:', subjectData.division || 'A', `Date: ${new Date().toLocaleDateString()} | Time: 9:00 am - 11:00 am`]);
+                aoa1.push(['Internal Examiner:', teacherName, 'External Examiner:', 'External Jury Member & Institute', '']);
+                aoa1.push([]); // Spacer row 9
+
+                aoa1.push(['RUBRICS EVALUATION MATRIX', '', '', '', '']);
+                aoa1.push(['Criteria', 'Excellent (5-4 Marks)', 'Good (3 Marks)', 'Satisfactory (1-2 Marks)', 'Poor (0 Marks)']);
+
                 cos.forEach((co, idx) => {
                     const r = defaultRubrics[idx % defaultRubrics.length];
-                    aoa.push([
+                    aoa1.push([
                         `${co.name}: ${co.description || r.name.split(': ')[1] || 'Evaluation Criteria'}`,
                         r.exc, r.gd, r.sat, r.pr
                     ]);
                 });
 
-                aoa.push([]); // Spacer row 15
+                const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
+                ws1['!cols'] = [
+                    { wch: 24 }, // Criteria
+                    { wch: 34 }, // Excellent
+                    { wch: 28 }, // Good
+                    { wch: 30 }, // Satisfactory
+                    { wch: 28 }  // Poor
+                ];
+                ws1['!merges'] = [
+                    { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
+                    { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
+                    { s: { r: 2, c: 0 }, e: { r: 2, c: 4 } },
+                    { s: { r: 3, c: 0 }, e: { r: 3, c: 4 } },
+                    { s: { r: 10, c: 0 }, e: { r: 10, c: 4 } }
+                ];
 
-                // Student Marksheet Table Header matching Page 2 image
+                // ==========================================
+                // PAGE 2: STUDENT MARKSHEET EVALUATION SHEET
+                // ==========================================
+                const aoa2 = [];
+                aoa2.push(['MIT ADT UNIVERSITY, SCHOOL OF COMPUTING, PUNE']);
+                aoa2.push(['Jury Assessment Examination Mark Sheet - Student Evaluation Scores']);
+                aoa2.push([`Subject: ${subjectData.name || 'IDS'} (${subjectData.code || '23CSE101'})  |  Division: ${subjectData.division || 'B'}  |  Date: ${new Date().toLocaleDateString()}  |  Examiner: ${teacherName}`]);
+                aoa2.push([]); // Spacer
+
                 const coHeaders = cos.map((co, cidx) => {
                     const maxM = co.criteria?.[0]?.maxMarks || 5;
-                    const letter = String.fromCharCode(65 + cidx); // A, B, C, D, E
+                    const letter = String.fromCharCode(65 + cidx);
                     return `${letter} - ${co.name} (${maxM} M)`;
                 });
 
                 const totalExamMaxMarks = examData.totalMarks || cos.reduce((sum, c) => sum + (c.criteria?.[0]?.maxMarks || 5), 0);
 
-                aoa.push([
+                aoa2.push([
                     'Sr. No.',
                     'Enrollment No',
                     'Name of the Student',
@@ -9336,7 +9442,6 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     'Marks in Words'
                 ]);
 
-                // Student Rows
                 let srNo = 1;
                 studentsSnap.forEach(studentDoc => {
                     const student = studentDoc.data();
@@ -9364,11 +9469,11 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 
                     const words = isAbsent ? 'Absent' : numberToWords(totalVal);
 
-                    aoa.push([
+                    aoa2.push([
                         srNo,
                         student.enrollment || '',
                         sanitizeString(student.name || ''),
-                        srNo, // Chit/Que No
+                        srNo,
                         ...coVals,
                         totalVal,
                         words
@@ -9377,28 +9482,33 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     srNo++;
                 });
 
-                // Generate SheetJS workbook
-                const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-                ws['!cols'] = [
-                    { wch: 8 },  // Sr No
+                const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
+                const numCols2 = 4 + cos.length + 2;
+                ws2['!cols'] = [
+                    { wch: 10 }, // Sr No
                     { wch: 18 }, // Enrollment No
                     { wch: 28 }, // Name of Student
-                    { wch: 18 }, // Que No / Chit No
-                    ...cos.map(() => ({ wch: 14 })), // CO columns
-                    { wch: 22 }, // Total Marks
-                    { wch: 25 }  // Marks in Words
+                    { wch: 20 }, // Que No
+                    ...cos.map(() => ({ wch: 16 })), // COs
+                    { wch: 24 }, // Total Marks
+                    { wch: 24 }  // Marks in Words
+                ];
+                ws2['!merges'] = [
+                    { s: { r: 0, c: 0 }, e: { r: 0, c: numCols2 - 1 } },
+                    { s: { r: 1, c: 0 }, e: { r: 1, c: numCols2 - 1 } },
+                    { s: { r: 2, c: 0 }, e: { r: 2, c: numCols2 - 1 } }
                 ];
 
+                // Append both pages to workbook
                 const wb = XLSX.utils.book_new();
-                const sheetName = `${subjectData.division || 'SOC-03'}_Marksheet`.slice(0, 31);
-                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+                XLSX.utils.book_append_sheet(wb, ws1, 'Page 1 - Rubrics & Info');
+                XLSX.utils.book_append_sheet(wb, ws2, 'Page 2 - Student Marksheet');
 
                 const fileName = `${(subjectData.name || 'Marksheet').replace(/[^a-zA-Z0-9]/g, '_')}_${subjectData.division || 'Div'}_Official_${Date.now()}.xlsx`;
                 XLSX.writeFile(wb, fileName);
 
                 if (typeof window.hideLoadingMessage === 'function') window.hideLoadingMessage();
-                showToast('📊 Official University Marksheet Excel downloaded!', 'success', 5000);
+                showToast('📊 Official University Marksheet Excel downloaded (Page 1 & 2)!', 'success', 5000);
 
             } catch (err) {
                 if (typeof window.hideLoadingMessage === 'function') window.hideLoadingMessage();
@@ -9408,6 +9518,185 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
         }
         window.exportOfficialUniversityFormatExcel = exportOfficialUniversityFormatExcel;
 
+        /**
+         * Generates and downloads the official MIT ADT University formatted CSV Marksheet
+         */
+        async function exportOfficialUniversityFormatCSV(examId) {
+            if (!examId) {
+                showToast('Please select an exam first', 'warning');
+                return;
+            }
+
+            try {
+                if (typeof window.showLoadingMessage === 'function') window.showLoadingMessage('Generating CSV Marksheet...');
+
+                const examDoc = await window.getDoc(window.doc(window.db, 'exams', examId));
+                if (!examDoc.exists()) {
+                    if (typeof window.hideLoadingMessage === 'function') window.hideLoadingMessage();
+                    showToast('Exam not found', 'danger');
+                    return;
+                }
+                const examData = examDoc.data();
+                const subjectDoc = await window.getDoc(window.doc(window.db, 'subjects', examData.subjectId));
+                const subjectData = subjectDoc.exists() ? subjectDoc.data() : {};
+
+                let studentsSnap;
+                if (subjectData.division) {
+                    studentsSnap = await window.getDocs(window.query(
+                        window.collection(window.db, 'students'),
+                        window.where('class', '==', subjectData.class || ''),
+                        window.where('division', '==', subjectData.division || '')
+                    ));
+                } else {
+                    studentsSnap = await window.getDocs(window.query(
+                        window.collection(window.db, 'students'),
+                        window.where('class', '==', subjectData.class || '')
+                    ));
+                }
+
+                const resultsSnap = await window.getDocs(window.query(
+                    window.collection(window.db, 'results'),
+                    window.where('examId', '==', examId)
+                ));
+
+                const resultsMap = {};
+                resultsSnap.forEach(d => { resultsMap[d.data().studentId] = d.data(); });
+
+                const teacherName = window.currentUser?.name || 'Prof. Faculty';
+
+                const cos = (examData.courseOutcomes && examData.courseOutcomes.length > 0) ? examData.courseOutcomes : [
+                    { name: 'CO1', criteria: [{ maxMarks: 5 }] },
+                    { name: 'CO2', criteria: [{ maxMarks: 5 }] },
+                    { name: 'CO3', criteria: [{ maxMarks: 5 }] },
+                    { name: 'CO4', criteria: [{ maxMarks: 5 }] },
+                    { name: 'CO5', criteria: [{ maxMarks: 5 }] }
+                ];
+
+                const totalCols = 4 + cos.length + 2;
+
+                const padRow = (arr) => {
+                    const row = [...arr];
+                    while (row.length < totalCols) row.push('');
+                    return row.map(escapeCSV).join(',');
+                };
+
+                const csvLines = [];
+
+                csvLines.push(padRow(['MIT ADT University, School of Computing, Pune']));
+                csvLines.push(padRow(['Department of Computer Science and Engineering']));
+                const examTitle = examData.name || (examData.examType === 'ese' ? 'End Semester Examination May 2026' : 'Continuous Assessment Examination');
+                csvLines.push(padRow([examTitle]));
+                csvLines.push(padRow(['Jury Assessment Examination Mark Sheet']));
+                csvLines.push(padRow([]));
+
+                csvLines.push(padRow(['Subject Code:', subjectData.code || '23CSE1103R', '', 'Subject Name:', subjectData.name || 'Jury Assessment Examination']));
+                csvLines.push(padRow(['Programme:', 'B.Tech', 'Year:', subjectData.class || 'FY', 'Semester:', subjectData.semester || 'SEM-II', 'Branch:', 'CSE/IT', 'Division:', subjectData.division || 'SOC-03']));
+                csvLines.push(padRow(['Batch:', subjectData.division || 'A', 'Date:', new Date().toLocaleDateString(), 'Time:', '9:00 am to 11:00 am']));
+                csvLines.push(padRow(['Internal Examiner:', teacherName, '', 'External Examiner:', 'External Jury Member & Institute']));
+                csvLines.push(padRow([]));
+
+                csvLines.push(padRow(['Criteria', 'Excellent (5-4 Marks)', 'Good (3 Marks)', 'Satisfactory (1-2 Marks)', 'Poor (0 Marks)']));
+
+                const defaultRubrics = [
+                    { name: 'CO1: Class, Object & Data Members', exc: 'Correct class created with proper data members and object creation', gd: 'Minor mistake in class/object', sat: 'Class created partially with missing members/object', pr: 'Class/object concept not implemented' },
+                    { name: 'CO2: Constructor & Function Implementation', exc: 'Constructor correctly initializes values and function performs required calculation', gd: 'Minor mistake in constructor or function logic', sat: 'Constructor/function partially implemented', pr: 'Constructor/function missing or incorrect' },
+                    { name: 'CO3: Inheritance & Function Overriding', exc: 'Correct inheritance and proper overriding of base class function in derived class', gd: 'Minor mistake in inheritance/overriding but concept works', sat: 'Inheritance used but overriding not properly shown', pr: 'Inheritance/overriding not implemented' },
+                    { name: 'CO4: Program Flow, Function Calling & Output', exc: 'All objects created, functions called correctly, and output is proper', gd: 'Minor mistake in calling or output format', sat: 'Partial function calling/output shown', pr: 'Program does not execute properly' },
+                    { name: 'CO5: Template Declaration', exc: 'Correct template function implemented and tested with required values', gd: 'Template works with minor syntax/logic issue', sat: 'Template partially implemented or tested incorrectly', pr: 'Template not used or incorrect' }
+                ];
+
+                cos.forEach((co, idx) => {
+                    const r = defaultRubrics[idx % defaultRubrics.length];
+                    csvLines.push(padRow([
+                        `${co.name}: ${co.description || r.name.split(': ')[1] || 'Evaluation Criteria'}`,
+                        r.exc, r.gd, r.sat, r.pr
+                    ]));
+                });
+
+                csvLines.push(padRow([]));
+
+                const coHeaders = cos.map((co, cidx) => {
+                    const maxM = co.criteria?.[0]?.maxMarks || 5;
+                    const letter = String.fromCharCode(65 + cidx);
+                    return `${letter} - ${co.name} (${maxM} M)`;
+                });
+
+                const totalExamMaxMarks = examData.totalMarks || cos.reduce((sum, c) => sum + (c.criteria?.[0]?.maxMarks || 5), 0);
+
+                csvLines.push(padRow([
+                    'Sr. No.',
+                    'Enrollment No',
+                    'Name of the Student',
+                    'Que. No. / Chit No.',
+                    ...coHeaders,
+                    `Total Marks out of ${totalExamMaxMarks}`,
+                    'Marks in Words'
+                ]));
+
+                let srNo = 1;
+                studentsSnap.forEach(studentDoc => {
+                    const student = studentDoc.data();
+                    const res = resultsMap[studentDoc.id];
+                    const isAbsent = !res || res.absent === true;
+
+                    const coVals = cos.map((co, cidx) => {
+                        if (isAbsent) return 'AB';
+                        const key = `${co.name}_C1`;
+                        const legacyKey = `CO${cidx + 1}_C1`;
+                        const val = res.coMarks?.[key] ?? res.coMarks?.[legacyKey] ?? null;
+                        return val !== null && val !== undefined ? val : '-';
+                    });
+
+                    let totalVal = 'AB';
+                    if (!isAbsent && res) {
+                        if (res.totalMarks !== undefined && res.totalMarks !== -1) {
+                            totalVal = Number(res.totalMarks).toFixed(1);
+                        } else {
+                            let sum = 0;
+                            coVals.forEach(v => { if (typeof v === 'number') sum += v; });
+                            totalVal = sum.toFixed(1);
+                        }
+                    }
+
+                    const words = isAbsent ? 'Absent' : numberToWords(totalVal);
+
+                    csvLines.push(padRow([
+                        srNo,
+                        student.enrollment || '',
+                        sanitizeString(student.name || ''),
+                        srNo,
+                        ...coVals,
+                        totalVal,
+                        words
+                    ]));
+
+                    srNo++;
+                });
+
+                const csvContent = csvLines.join('\n');
+                const fileName = `${(subjectData.name || 'Marksheet').replace(/[^a-zA-Z0-9]/g, '_')}_${subjectData.division || 'Div'}_Official_${Date.now()}.csv`;
+                
+                const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', fileName);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                if (typeof window.hideLoadingMessage === 'function') window.hideLoadingMessage();
+                showToast('📄 Official University Marksheet CSV downloaded!', 'success', 5000);
+
+            } catch (err) {
+                if (typeof window.hideLoadingMessage === 'function') window.hideLoadingMessage();
+                console.error('CSV Export error:', err);
+                showToast('Export error: ' + err.message, 'danger');
+            }
+        }
+        window.exportOfficialUniversityFormatCSV = exportOfficialUniversityFormatCSV;
+
         // Expose new faculty registration functions globally
         window.downloadFacultyTemplate = downloadFacultyTemplate;
         window.handleFacultyExcelUpload = handleFacultyExcelUpload;
@@ -9415,4 +9704,1098 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
         window.exportFacultyRegistrationReport = exportFacultyRegistrationReport;
 
         console.log("Evaluator v1.1.0: App logic initialized and verified.");
+
+        // ============================================================
+        // Dynamic Class, Division & Batch Dropdown Management
+        // ============================================================
+
+        async function addBatch() {
+            if (!window.currentUser) { showToast('Session expired. Please log in again.', 'danger'); return; }
+            const classSelect = document.getElementById('batchClassSelect');
+            const divSelect = document.getElementById('batchDivisionSelect');
+            const classId = classSelect?.value;
+            const divisionId = divSelect?.value;
+            const batchInput = document.getElementById('batchNamesInput')?.value?.trim();
+
+            if (!classId || !divisionId || !batchInput) {
+                showToast('Please select Class, Division, and enter Batch name(s)', "danger");
+                return;
+            }
+
+            const batchNames = batchInput.split(',').map(b => b.trim().toUpperCase()).filter(Boolean);
+            if (batchNames.length === 0) {
+                showToast('Please enter at least one valid batch name', "danger");
+                return;
+            }
+
+            try {
+                const classDoc = await window.getDoc(window.doc(window.db, 'classes', classId));
+                const classData = classDoc.exists() ? classDoc.data() : {};
+                const divDoc = await window.getDoc(window.doc(window.db, 'divisions', divisionId));
+                const divData = divDoc.exists() ? divDoc.data() : {};
+
+                let added = 0;
+                for (const bName of batchNames) {
+                    const dupCheck = await window.getDocs(window.query(window.collection(window.db, 'batches'),
+                        window.where('divisionId', '==', divisionId),
+                        window.where('name', '==', bName)));
+                    
+                    if (dupCheck.empty) {
+                        await window.addDoc(window.collection(window.db, 'batches'), {
+                            classId,
+                            className: classData.name || '',
+                            classCode: classData.code || '',
+                            divisionId,
+                            divisionName: divData.name || '',
+                            name: bName,
+                            academicYear: classData.academicYear || document.getElementById('academicYear')?.value || '',
+                            semester: classData.semester || document.getElementById('semester')?.value || '',
+                            createdBy: window.currentUser.uid,
+                            createdAt: new Date().toISOString(),
+                            isDeleted: false
+                        });
+                        added++;
+                    }
+                }
+
+                showToast(`Added ${added} batch(es) successfully!`, "success");
+                document.getElementById('batchNamesInput').value = '';
+                loadClassesList();
+            } catch (error) {
+                showToast('Error adding batch: ' + error.message, 'danger');
+            }
+        }
+        window.addBatch = addBatch;
+
+        async function loadAllClassDropdowns() {
+            const ids = ['divisionClass', 'batchClassSelect', 'subjectClass', 'studentClass', 'assignClass'];
+            const selects = ids.map(id => document.getElementById(id)).filter(Boolean);
+            if (selects.length === 0) return;
+
+            try {
+                const year = document.getElementById('academicYear')?.value || '';
+                const semester = document.getElementById('semester')?.value || '';
+                const snapshot = await window.getDocs(window.query(window.collection(window.db, 'classes'),
+                    window.where('academicYear', '==', year),
+                    window.where('semester', '==', semester)));
+
+                const optionsHtml = ['<option value="">Select Class</option>'];
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if (!data.isDeleted) {
+                        optionsHtml.push(`<option value="${docSnap.id}" data-code="${data.code}">${data.code} - ${data.name}</option>`);
+                    }
+                });
+
+                selects.forEach(select => {
+                    const currentVal = select.value;
+                    select.innerHTML = optionsHtml.join('');
+                    if (currentVal) select.value = currentVal;
+                });
+            } catch (e) {
+                console.error("Error loading class dropdowns:", e);
+            }
+        }
+        window.loadClassesDropdown = loadAllClassDropdowns;
+        window.loadAllClassDropdowns = loadAllClassDropdowns;
+
+        async function loadDivisionsForClassSelect(classSelectId, divSelectId, batchSelectId) {
+            const classSelect = document.getElementById(classSelectId);
+            const divSelect = document.getElementById(divSelectId);
+            if (!classSelect || !divSelect) return;
+
+            const classId = classSelect.value;
+            const selectedOption = classSelect.options[classSelect.selectedIndex];
+            const classCode = selectedOption ? (selectedOption.dataset.code || selectedOption.textContent.split(' - ')[0]) : '';
+
+            divSelect.innerHTML = '<option value="">Select Division</option>';
+            if (batchSelectId) {
+                const bSelect = document.getElementById(batchSelectId);
+                if (bSelect) bSelect.innerHTML = '<option value="">All / Select Batch</option>';
+            }
+
+            if (!classId) return;
+
+            try {
+                let snapshot = await window.getDocs(window.query(window.collection(window.db, 'divisions'),
+                    window.where('classId', '==', classId)));
+                if (snapshot.empty && classCode) {
+                    snapshot = await window.getDocs(window.query(window.collection(window.db, 'divisions'),
+                        window.where('classCode', '==', classCode)));
+                }
+
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if (!data.isDeleted) {
+                        const opt = document.createElement('option');
+                        opt.value = docSnap.id;
+                        opt.dataset.name = data.name;
+                        opt.textContent = `Div ${data.name}`;
+                        divSelect.appendChild(opt);
+                    }
+                });
+            } catch (e) {
+                console.error("Error loading divisions:", e);
+            }
+        }
+
+        async function loadBatchesForDivisionSelect(divSelectId, batchSelectId) {
+            const divSelect = document.getElementById(divSelectId);
+            const batchSelect = document.getElementById(batchSelectId);
+            if (!divSelect || !batchSelect) return;
+
+            const divId = divSelect.value;
+            const selectedOption = divSelect.options[divSelect.selectedIndex];
+            const divName = selectedOption ? (selectedOption.dataset.name || selectedOption.textContent.replace('Div ', '')) : '';
+
+            batchSelect.innerHTML = '<option value="">All / Select Batch</option>';
+            if (!divId && !divName) return;
+
+            try {
+                let snapshot = await window.getDocs(window.query(window.collection(window.db, 'batches'),
+                    window.where('divisionId', '==', divId)));
+                if (snapshot.empty && divName) {
+                    snapshot = await window.getDocs(window.query(window.collection(window.db, 'batches'),
+                        window.where('divisionName', '==', divName)));
+                }
+
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if (!data.isDeleted) {
+                        const opt = document.createElement('option');
+                        opt.value = data.name;
+                        opt.textContent = `Batch ${data.name}`;
+                        batchSelect.appendChild(opt);
+                    }
+                });
+            } catch (e) {
+                console.error("Error loading batches:", e);
+            }
+        }
+
+        window.loadDivisionsDropdownForBatch = () => loadDivisionsForClassSelect('batchClassSelect', 'batchDivisionSelect');
+        window.loadDivisionsForSubject = () => loadDivisionsForClassSelect('subjectClass', 'subjectDivision', 'subjectBatch');
+        window.loadBatchesForSubject = () => loadBatchesForDivisionSelect('subjectDivision', 'subjectBatch');
+
+        window.loadDivisionsForStudent = () => loadDivisionsForClassSelect('studentClass', 'studentDivision', 'studentBatch');
+        window.loadBatchesForStudent = () => loadBatchesForDivisionSelect('studentDivision', 'studentBatch');
+
+        window.loadDivisionsForAssign = () => loadDivisionsForClassSelect('assignClass', 'assignDivision', 'assignBatch');
+        window.loadBatchesForAssign = () => loadBatchesForDivisionSelect('assignDivision', 'assignBatch');
+
+        /* ==========================================================================
+           COURSE OUTCOME (CO) ATTAINMENT MODULE
+           ========================================================================== */
+        
+        // Rubric Constants
+        const CO_RUBRIC = {
+            IPA1: { name: 'IPA 1', total: 12, cos: { CO1: 4, CO2: 4, CO3: 4, CO4: 0, CO5: 0 } },
+            IPA2: { name: 'IPA 2', total: 8, cos: { CO1: 0, CO2: 0, CO3: 0, CO4: 4, CO5: 4 } },
+            Assignment: { name: 'Assignment', total: 5, cos: { CO1: 1, CO2: 1, CO3: 1, CO4: 1, CO5: 1 } },
+            EndSem: { name: 'EndSem', total: 25, cos: { CO1: 5, CO2: 5, CO3: 5, CO4: 5, CO5: 5 } }
+        };
+
+        const CO_MAX_MARKS = { CO1: 10, CO2: 10, CO3: 10, CO4: 10, CO5: 10 };
+
+        function calculateCOScoreAndLevel(mark, maxMark = 10) {
+            const pct = maxMark > 0 ? (mark / maxMark) * 100 : 0;
+            if (pct >= 70) {
+                return { level: 'High', score: 3, badgeClass: 'badge-attainment-high', pct: Math.round(pct) };
+            } else if (pct >= 60) {
+                return { level: 'Medium', score: 2, badgeClass: 'badge-attainment-medium', pct: Math.round(pct) };
+            } else {
+                return { level: 'Low', score: 1, badgeClass: 'badge-attainment-low', pct: Math.round(pct) };
+            }
+        }
+
+        function extractCOMarksFromResult(res) {
+            const coTotals = { CO1: 0, CO2: 0, CO3: 0, CO4: 0, CO5: 0 };
+            if (!res) return coTotals;
+
+            // 1. Direct coMarks map (e.g., { CO1_C1: 2, CO1_C2: 2, CO2_C1: 4, ... })
+            if (res.coMarks && typeof res.coMarks === 'object' && Object.keys(res.coMarks).length > 0) {
+                Object.keys(res.coMarks).forEach(key => {
+                    const val = parseFloat(res.coMarks[key]) || 0;
+                    if (key === 'CO1' || key.startsWith('CO1_') || key.startsWith('CO1-')) coTotals.CO1 += val;
+                    else if (key === 'CO2' || key.startsWith('CO2_') || key.startsWith('CO2-')) coTotals.CO2 += val;
+                    else if (key === 'CO3' || key.startsWith('CO3_') || key.startsWith('CO3-')) coTotals.CO3 += val;
+                    else if (key === 'CO4' || key.startsWith('CO4_') || key.startsWith('CO4-')) coTotals.CO4 += val;
+                    else if (key === 'CO5' || key.startsWith('CO5_') || key.startsWith('CO5-')) coTotals.CO5 += val;
+                });
+            } 
+            // 2. coAttainment array (e.g. [{ co: "CO1", percentage: 80 }, ...])
+            else if (Array.isArray(res.coAttainment) && res.coAttainment.length > 0) {
+                res.coAttainment.forEach(ca => {
+                    if (ca && ca.co) {
+                        const coName = ca.co.toUpperCase();
+                        if (coTotals.hasOwnProperty(coName)) {
+                            coTotals[coName] = (parseFloat(ca.percentage) / 100) * 5;
+                        }
+                    }
+                });
+            }
+            // 3. Fallback: totalMarks
+            else if (res.totalMarks != null && res.totalMarks >= 0) {
+                const tot = parseFloat(res.totalMarks) || 0;
+                const max = parseFloat(res.maxMarks) || 1;
+                const pct = Math.min(1, max > 0 ? tot / max : 0);
+                ['CO1', 'CO2', 'CO3', 'CO4', 'CO5'].forEach(co => {
+                    coTotals[co] = pct * 5;
+                });
+            }
+
+            return coTotals;
+        }
+
+        async function loadCOAttainmentPage(role = 'teacher') {
+            const containerId = `${role}CoattainmentContainer`;
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            container.innerHTML = `
+                <div class="card co-attainment-container">
+                    <h3 style="display:flex;align-items:center;gap:10px;">
+                        <span>🎯</span> Course Outcome (CO) Attainment Calculator & Report
+                    </h3>
+
+                    <!-- Rubric Breakdown Info Box -->
+                    <div class="co-rubric-card">
+                        <div style="font-weight:700;font-size:14px;color:var(--primary);margin-bottom:6px;">
+                            📋 University Academic CO Distribution & Attainment Rubric
+                        </div>
+                        <div style="font-size:12px;color:var(--text-main);line-height:1.6;">
+                            • <strong>IPA 1 (12 Marks):</strong> CO1 (4m) + CO2 (4m) + CO3 (4m)<br>
+                            • <strong>IPA 2 (8 Marks):</strong> CO4 (4m) + CO5 (4m)<br>
+                            • <strong>Assignment (5 Marks):</strong> CO1 (1m) + CO2 (1m) + CO3 (1m) + CO4 (1m) + CO5 (1m)<br>
+                            • <strong>EndSem (25 Marks):</strong> CO1 (5m) + CO2 (5m) + CO3 (5m) + CO4 (5m) + CO5 (5m)<br>
+                            • <strong>CO Totals:</strong> CO1 (10m), CO2 (10m), CO3 (10m), CO4 (10m), CO5 (10m) &rarr; <strong>Total: 50 Marks</strong><br>
+                            • <strong>Attainment Levels:</strong> <span class="badge-attainment-high">&ge; 70%: High (Score 3)</span> &nbsp;|&nbsp; <span class="badge-attainment-medium">60% - 70%: Medium (Score 2)</span> &nbsp;|&nbsp; <span class="badge-attainment-low">&lt; 60%: Low (Score 1)</span>
+                        </div>
+                    </div>
+
+                    <!-- Filter Controls -->
+                    <div class="filters-container" style="background:var(--bg-surface2);padding:16px;border-radius:10px;margin-bottom:20px;">
+                        <div class="form-row" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px;">
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-weight:600;font-size:12px;">Academic Year</label>
+                                <select id="${role}COAttainmentYear" onchange="fetchAndRenderCOAttainment('${role}')">
+                                    <option value="2024-25">2024-25</option>
+                                    <option value="2025-26" selected>2025-26</option>
+                                    <option value="2026-27">2026-27</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-weight:600;font-size:12px;">Semester</label>
+                                <select id="${role}COAttainmentSem" onchange="fetchAndRenderCOAttainment('${role}')">
+                                    <option value="SEM-1">SEM-1</option>
+                                    <option value="SEM-2">SEM-2</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-weight:600;font-size:12px;">Select Subject</label>
+                                <select id="${role}COAttainmentSubjectSelect" onchange="fetchAndRenderCOAttainment('${role}')">
+                                    <option value="">Loading subjects...</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-weight:600;font-size:12px;">Search Student</label>
+                                <input type="text" id="${role}COAttainmentSearch" placeholder="Filter by name or roll..." onkeyup="filterCOAttainmentTable('${role}')">
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;align-items:center;">
+                            <button class="btn btn-primary btn-sm" onclick="fetchAndRenderCOAttainment('${role}', true)">
+                                🔄 Recalculate from Exams
+                            </button>
+                            <button class="btn btn-success btn-sm" onclick="saveCOAttainmentData('${role}')">
+                                💾 Save Attainment Data
+                            </button>
+                            <button class="btn btn-info btn-sm" onclick="exportCOAttainmentExcel('${role}')" style="background:#0284c7;color:#fff;border:none;">
+                                📊 Export to Excel
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="exportCOAttainmentPDF('${role}')">
+                                🖨️ Export PDF / Print
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Summary KPI Stat Cards -->
+                    <div id="${role}COAttainmentStats" class="stats-grid" style="margin-bottom:20px;grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
+                        <!-- Stat cards will be dynamically rendered here -->
+                    </div>
+
+                    <!-- CO Attainment Matrix Table Container -->
+                    <div id="${role}COAttainmentTableWrapper">
+                        <div style="text-align:center;padding:40px;color:var(--gray-500);">
+                            Please select a subject to calculate and view CO Attainment.
+                        </div>
+                    </div>
+
+                    <!-- Class Attainment Summary Matrix -->
+                    <div id="${role}COAttainmentSummaryMatrix" style="margin-top:24px;"></div>
+                </div>
+            `;
+
+            await populateCOAttainmentSubjects(role);
+        }
+
+        async function populateCOAttainmentSubjects(role) {
+            const selectEl = document.getElementById(`${role}COAttainmentSubjectSelect`);
+            if (!selectEl) return;
+
+            selectEl.innerHTML = '<option value="">Select Subject</option>';
+
+            try {
+                let subjectsSnap;
+                if (role === 'teacher' && window.currentUser) {
+                    const assignSnap = await window.getDocs(window.query(
+                        window.collection(window.db, 'teacher_assignments'),
+                        window.where('teacherEmail', '==', window.currentUser.email)
+                    ));
+                    const subjectIds = [];
+                    assignSnap.forEach(d => {
+                        const data = d.data();
+                        if (data.subjectId) subjectIds.push(data.subjectId);
+                    });
+                    if (subjectIds.length > 0) {
+                        const chunks = [];
+                        for (let i = 0; i < subjectIds.length; i += 30) chunks.push(subjectIds.slice(i, i + 30));
+                        const allSubjectDocs = [];
+                        for (const chunk of chunks) {
+                            const snap = await window.getDocs(window.query(window.collection(window.db, 'subjects'), window.where('__name__', 'in', chunk)));
+                            snap.forEach(d => allSubjectDocs.push(d));
+                        }
+                        allSubjectDocs.forEach(docSnap => {
+                            const data = docSnap.data();
+                            const opt = document.createElement('option');
+                            opt.value = docSnap.id;
+                            opt.textContent = `${data.name} (${data.code || ''}) - ${data.class || ''} ${data.division || ''}`;
+                            selectEl.appendChild(opt);
+                        });
+                    }
+                } else {
+                    let q = window.collection(window.db, 'subjects');
+                    if (role === 'hod' && window.currentUser?.department) {
+                        q = window.query(q, window.where('department', '==', window.currentUser.department));
+                    }
+                    subjectsSnap = await window.getDocs(q);
+                    subjectsSnap.forEach(docSnap => {
+                        const data = docSnap.data();
+                        const opt = document.createElement('option');
+                        opt.value = docSnap.id;
+                        opt.textContent = `${data.name} (${data.code || ''}) - ${data.class || ''} ${data.division || ''}`;
+                        selectEl.appendChild(opt);
+                    });
+                }
+
+                if (selectEl.options.length > 1) {
+                    selectEl.selectedIndex = 1;
+                    await fetchAndRenderCOAttainment(role);
+                }
+            } catch (err) {
+                console.error('Error loading CO attainment subjects:', err);
+            }
+        }
+
+        async function fetchAndRenderCOAttainment(role, forceRecalculate = false) {
+            const subjectId = document.getElementById(`${role}COAttainmentSubjectSelect`)?.value;
+            const year = document.getElementById(`${role}COAttainmentYear`)?.value || '2025-26';
+            const semester = document.getElementById(`${role}COAttainmentSem`)?.value || 'SEM-1';
+            const wrapper = document.getElementById(`${role}COAttainmentTableWrapper`);
+            const statsContainer = document.getElementById(`${role}COAttainmentStats`);
+            const summaryContainer = document.getElementById(`${role}COAttainmentSummaryMatrix`);
+
+            if (!subjectId) {
+                if (wrapper) wrapper.innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400);">Select a subject to view CO Attainment.</div>';
+                return;
+            }
+
+            wrapper.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner" style="margin:0 auto 10px;"></div>Loading student data and exam records...</div>';
+
+            try {
+                const subjectDoc = await window.getDoc(window.doc(window.db, 'subjects', subjectId));
+                if (!subjectDoc.exists()) {
+                    wrapper.innerHTML = '<div class="alert alert-danger">Subject not found.</div>';
+                    return;
+                }
+                const subjectData = subjectDoc.data();
+
+                // Fetch students belonging to subject class & division
+                const studentsSnap = await window.getDocs(window.query(
+                    window.collection(window.db, 'students'),
+                    window.where('class', '==', subjectData.class),
+                    window.where('division', '==', subjectData.division)
+                ));
+
+                const studentDocs = studentsSnap.docs;
+                studentDocs.sort((a, b) => (a.data().rollNo || a.data().name).localeCompare(b.data().rollNo || b.data().name));
+
+                if (studentDocs.length === 0) {
+                    wrapper.innerHTML = `<div class="alert alert-warning">No students found for class ${subjectData.class} division ${subjectData.division}. Please import or add students first.</div>`;
+                    return;
+                }
+
+                // Check saved CO attainment doc in Firestore
+                const docId = `${subjectId}_${year}_${semester}`;
+                let savedData = null;
+                if (!forceRecalculate) {
+                    const docSnap = await window.getDoc(window.doc(window.db, 'co_attainments', docId));
+                    if (docSnap.exists()) {
+                        savedData = docSnap.data().studentsMap || null;
+                    }
+                }
+
+                // If no saved data or force recalculate, fetch finalized results for this subject
+                let examResultsMap = {}; // studentId -> { IPA1: {CO1..}, IPA2: {}, Assignment: {}, EndSem: {} }
+                if (!savedData || forceRecalculate) {
+                    const examsSnap = await window.getDocs(window.query(
+                        window.collection(window.db, 'exams'),
+                        window.where('subjectId', '==', subjectId)
+                    ));
+
+                    const examIds = examsSnap.docs.map(d => d.id);
+                    let allResultsDocs = [];
+
+                    // Fetch results matching subjectId
+                    const subResultsSnap = await window.getDocs(window.query(
+                        window.collection(window.db, 'results'),
+                        window.where('subjectId', '==', subjectId)
+                    ));
+                    subResultsSnap.forEach(d => allResultsDocs.push(d));
+
+                    // Fetch results matching examIds (chunked by 30)
+                    if (examIds.length > 0) {
+                        const chunks = [];
+                        for (let i = 0; i < examIds.length; i += 30) chunks.push(examIds.slice(i, i + 30));
+                        for (const chunk of chunks) {
+                            const snap = await window.getDocs(window.query(
+                                window.collection(window.db, 'results'),
+                                window.where('examId', 'in', chunk)
+                            ));
+                            snap.forEach(d => {
+                                if (!allResultsDocs.some(existing => existing.id === d.id)) {
+                                    allResultsDocs.push(d);
+                                }
+                            });
+                        }
+                    }
+
+                    // Parse and categorize all exam results automatically
+                    allResultsDocs.forEach(rSnap => {
+                        const res = rSnap.data();
+                        const sId = res.studentId;
+                        if (!sId) return;
+
+                        if (!examResultsMap[sId]) examResultsMap[sId] = { IPA1: null, IPA2: null, Assignment: null, EndSem: null };
+
+                        const examDoc = examsSnap.docs.find(e => e.id === res.examId);
+                        const examName = ((examDoc?.data()?.name || res.examName || '') + '').toLowerCase();
+                        const examType = ((examDoc?.data()?.examType || res.examType || '') + '').toLowerCase();
+
+                        let category = 'EndSem';
+                        if (examName.includes('ipa 1') || examName.includes('ipa1') || examName.includes('unit 1') || examName.includes('unit i') || examName.includes('ca 1') || examName.includes('ca1')) {
+                            category = 'IPA1';
+                        } else if (examName.includes('ipa 2') || examName.includes('ipa2') || examName.includes('unit 2') || examName.includes('unit ii') || examName.includes('ca 2') || examName.includes('ca2')) {
+                            category = 'IPA2';
+                        } else if (examName.includes('assignment') || examName.includes('asgn') || examName.includes('assign')) {
+                            category = 'Assignment';
+                        } else if (examType === 'ese' || examName.includes('endsem') || examName.includes('end sem') || examName.includes('ese') || examName.includes('final')) {
+                            category = 'EndSem';
+                        } else if (examType === 'ca') {
+                            const extracted = extractCOMarksFromResult(res);
+                            if (extracted.CO4 > 0 || extracted.CO5 > 0) category = 'IPA2';
+                            else category = 'IPA1';
+                        }
+
+                        const coMarksExtracted = extractCOMarksFromResult(res);
+                        examResultsMap[sId][category] = coMarksExtracted;
+                    });
+                }
+
+                // Build initial student data structure
+                const studentsData = studentDocs.map(sDoc => {
+                    const s = sDoc.data();
+                    const sId = sDoc.id;
+                    const savedStudent = savedData ? savedData[sId] : null;
+
+                    const marks = {
+                        CO1: { IPA1: 0, IPA2: 0, Assignment: 0, EndSem: 0 },
+                        CO2: { IPA1: 0, IPA2: 0, Assignment: 0, EndSem: 0 },
+                        CO3: { IPA1: 0, IPA2: 0, Assignment: 0, EndSem: 0 },
+                        CO4: { IPA1: 0, IPA2: 0, Assignment: 0, EndSem: 0 },
+                        CO5: { IPA1: 0, IPA2: 0, Assignment: 0, EndSem: 0 }
+                    };
+
+                    if (savedStudent && savedStudent.marks) {
+                        ['CO1', 'CO2', 'CO3', 'CO4', 'CO5'].forEach(co => {
+                            if (savedStudent.marks[co]) {
+                                marks[co].IPA1 = parseFloat(savedStudent.marks[co].IPA1) || 0;
+                                marks[co].IPA2 = parseFloat(savedStudent.marks[co].IPA2) || 0;
+                                marks[co].Assignment = parseFloat(savedStudent.marks[co].Assignment) || 0;
+                                marks[co].EndSem = parseFloat(savedStudent.marks[co].EndSem) || 0;
+                            }
+                        });
+                    } else if (examResultsMap[sId]) {
+                        const erMap = examResultsMap[sId];
+                        ['CO1', 'CO2', 'CO3', 'CO4', 'CO5'].forEach(co => {
+                            if (erMap.IPA1 && erMap.IPA1[co] != null) marks[co].IPA1 = Math.min(CO_RUBRIC.IPA1.cos[co], Math.max(0, parseFloat(erMap.IPA1[co]) || 0));
+                            if (erMap.IPA2 && erMap.IPA2[co] != null) marks[co].IPA2 = Math.min(CO_RUBRIC.IPA2.cos[co], Math.max(0, parseFloat(erMap.IPA2[co]) || 0));
+                            if (erMap.Assignment && erMap.Assignment[co] != null) marks[co].Assignment = Math.min(CO_RUBRIC.Assignment.cos[co], Math.max(0, parseFloat(erMap.Assignment[co]) || 0));
+                            if (erMap.EndSem && erMap.EndSem[co] != null) marks[co].EndSem = Math.min(CO_RUBRIC.EndSem.cos[co], Math.max(0, parseFloat(erMap.EndSem[co]) || 0));
+                        });
+                    }
+
+                    return {
+                        id: sId,
+                        name: s.name,
+                        enrollment: s.enrollment || s.rollNo || sId,
+                        rollNo: s.rollNo || '',
+                        marks
+                    };
+                });
+
+                // Store window reference for live calculations
+                window[`__coAttainmentData_${role}`] = {
+                    subjectId, year, semester, students: studentsData
+                };
+
+                // Render Table Matrix
+                renderCOAttainmentMatrixTable(role);
+            } catch (error) {
+                console.error('Error fetching CO attainment:', error);
+                wrapper.innerHTML = `<div class="alert alert-danger">Error fetching data: ${error.message}</div>`;
+            }
+        }
+
+        function renderCOAttainmentMatrixTable(role) {
+            const dataObj = window[`__coAttainmentData_${role}`];
+            if (!dataObj) return;
+
+            const { students } = dataObj;
+            const wrapper = document.getElementById(`${role}COAttainmentTableWrapper`);
+            const statsContainer = document.getElementById(`${role}COAttainmentStats`);
+            const summaryContainer = document.getElementById(`${role}COAttainmentSummaryMatrix`);
+
+            const cos = ['CO1', 'CO2', 'CO3', 'CO4', 'CO5'];
+
+            let html = `
+                <div class="co-matrix-wrapper">
+                    <table class="co-matrix-table" id="${role}COMatrixTable">
+                        <thead>
+                            <tr>
+                                <th rowspan="2" style="min-width:40px;">#</th>
+                                <th rowspan="2" style="min-width:140px;text-align:left;padding-left:10px;">Student Name</th>
+                                <th rowspan="2" style="min-width:100px;">Enrollment</th>
+                                ${cos.map(co => `<th colspan="6" class="co-header-group">${co} (Max 10m)</th>`).join('')}
+                                <th colspan="2" class="co-header-group" style="background:linear-gradient(135deg,#312e81,#4338ca);">Overall</th>
+                            </tr>
+                            <tr>
+                                ${cos.map(co => `
+                                    <th style="color:#0284c7;" title="Max ${CO_RUBRIC.IPA1.cos[co]}m">IPA1</th>
+                                    <th style="color:#0284c7;" title="Max ${CO_RUBRIC.IPA2.cos[co]}m">IPA2</th>
+                                    <th style="color:#0284c7;" title="Max ${CO_RUBRIC.Assignment.cos[co]}m">Asgn</th>
+                                    <th style="color:#0284c7;" title="Max ${CO_RUBRIC.EndSem.cos[co]}m">EndSem</th>
+                                    <th style="background:var(--bg-surface2);font-weight:800;">Total</th>
+                                    <th style="background:var(--bg-surface2);font-weight:800;">Score</th>
+                                `).join('')}
+                                <th style="background:#312e81;color:#fff;">Total (/50)</th>
+                                <th style="background:#312e81;color:#fff;">Avg Score (/3)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            students.forEach((st, idx) => {
+                let studentTotal = 0;
+                let studentScoreSum = 0;
+
+                html += `<tr data-student-id="${st.id}" class="co-student-row">
+                    <td>${idx + 1}</td>
+                    <td style="text-align:left;font-weight:600;padding-left:10px;">${st.name}</td>
+                    <td><small>${st.enrollment}</small></td>`;
+
+                cos.forEach(co => {
+                    const m = st.marks[co];
+                    const ipa1Max = CO_RUBRIC.IPA1.cos[co];
+                    const ipa2Max = CO_RUBRIC.IPA2.cos[co];
+                    const asgnMax = CO_RUBRIC.Assignment.cos[co];
+                    const eseMax = CO_RUBRIC.EndSem.cos[co];
+
+                    const coTotal = m.IPA1 + m.IPA2 + m.Assignment + m.EndSem;
+                    const res = calculateCOScoreAndLevel(coTotal, 10);
+                    studentTotal += coTotal;
+                    studentScoreSum += res.score;
+
+                    html += `
+                        <td style="${ipa1Max === 0 ? 'opacity:0.3;color:#94a3b8;' : 'font-weight:600;'}">${ipa1Max === 0 ? '-' : m.IPA1}</td>
+                        <td style="${ipa2Max === 0 ? 'opacity:0.3;color:#94a3b8;' : 'font-weight:600;'}">${ipa2Max === 0 ? '-' : m.IPA2}</td>
+                        <td style="font-weight:600;">${m.Assignment}</td>
+                        <td style="font-weight:600;">${m.EndSem}</td>
+                        <td style="font-weight:800;background:rgba(243,244,246,0.6);" id="${role}_${st.id}_${co}_total">${coTotal.toFixed(1)}</td>
+                        <td id="${role}_${st.id}_${co}_score"><span class="${res.badgeClass}">${res.level} (${res.score})</span></td>
+                    `;
+                });
+
+                const studentAvgScore = (studentScoreSum / 5).toFixed(2);
+                html += `
+                    <td style="font-weight:800;color:var(--primary);" id="${role}_${st.id}_overall_total">${studentTotal.toFixed(1)}</td>
+                    <td style="font-weight:800;color:var(--primary);" id="${role}_${st.id}_overall_score">${studentAvgScore}</td>
+                </tr>`;
+            });
+
+            // Column Average Footer Row
+            html += `<tr class="tr-avg-row" id="${role}COAvgRow">
+                <td colspan="3" style="text-align:right;padding-right:12px;letter-spacing:0.5px;">AVERAGE (ALL STUDENTS):</td>`;
+
+            cos.forEach(co => {
+                html += `
+                    <td id="${role}_avg_${co}_IPA1">0.0</td>
+                    <td id="${role}_avg_${co}_IPA2">0.0</td>
+                    <td id="${role}_avg_${co}_Assignment">0.0</td>
+                    <td id="${role}_avg_${co}_EndSem">0.0</td>
+                    <td id="${role}_avg_${co}_Total" style="font-weight:900;">0.0</td>
+                    <td id="${role}_avg_${co}_Score" style="font-weight:900;">0.00</td>
+                `;
+            });
+
+            html += `
+                <td id="${role}_avg_overall_total" style="font-weight:900;">0.0</td>
+                <td id="${role}_avg_overall_score" style="font-weight:900;">0.00</td>
+            </tr>`;
+
+            html += `</tbody></table></div>`;
+            wrapper.innerHTML = html;
+
+            recalculateAllCOAttainmentAverages(role);
+        }
+
+        function onCOAttainmentInputChanged(role, studentId) {
+            const dataObj = window[`__coAttainmentData_${role}`];
+            if (!dataObj) return;
+
+            const student = dataObj.students.find(s => s.id === studentId);
+            if (!student) return;
+
+            const row = document.querySelector(`tr[data-student-id="${studentId}"]`);
+            if (!row) return;
+
+            const cos = ['CO1', 'CO2', 'CO3', 'CO4', 'CO5'];
+            let studentTotal = 0;
+            let studentScoreSum = 0;
+
+            cos.forEach(co => {
+                const ipa1 = parseFloat(row.querySelector(`input[data-co="${co}"][data-exam="IPA1"]`)?.value) || 0;
+                const ipa2 = parseFloat(row.querySelector(`input[data-co="${co}"][data-exam="IPA2"]`)?.value) || 0;
+                const asgn = parseFloat(row.querySelector(`input[data-co="${co}"][data-exam="Assignment"]`)?.value) || 0;
+                const ese = parseFloat(row.querySelector(`input[data-co="${co}"][data-exam="EndSem"]`)?.value) || 0;
+
+                student.marks[co].IPA1 = ipa1;
+                student.marks[co].IPA2 = ipa2;
+                student.marks[co].Assignment = asgn;
+                student.marks[co].EndSem = ese;
+
+                const coTotal = ipa1 + ipa2 + asgn + ese;
+                const res = calculateCOScoreAndLevel(coTotal, 10);
+                studentTotal += coTotal;
+                studentScoreSum += res.score;
+
+                const totalEl = document.getElementById(`${role}_${studentId}_${co}_total`);
+                const scoreEl = document.getElementById(`${role}_${studentId}_${co}_score`);
+                if (totalEl) totalEl.textContent = coTotal.toFixed(1);
+                if (scoreEl) scoreEl.innerHTML = `<span class="${res.badgeClass}">${res.level} (${res.score})</span>`;
+            });
+
+            const overallTotalEl = document.getElementById(`${role}_${studentId}_overall_total`);
+            const overallScoreEl = document.getElementById(`${role}_${studentId}_overall_score`);
+            if (overallTotalEl) overallTotalEl.textContent = studentTotal.toFixed(1);
+            if (overallScoreEl) overallScoreEl.textContent = (studentScoreSum / 5).toFixed(2);
+
+            recalculateAllCOAttainmentAverages(role);
+        }
+
+        function recalculateAllCOAttainmentAverages(role) {
+            const dataObj = window[`__coAttainmentData_${role}`];
+            if (!dataObj) return;
+
+            const { students } = dataObj;
+            const count = students.length;
+            if (count === 0) return;
+
+            const cos = ['CO1', 'CO2', 'CO3', 'CO4', 'CO5'];
+
+            const sums = {};
+            cos.forEach(co => {
+                sums[co] = { IPA1: 0, IPA2: 0, Assignment: 0, EndSem: 0, Total: 0, Score: 0, HighCount: 0, MedCount: 0, LowCount: 0 };
+            });
+            let sumOverallTotal = 0;
+            let sumOverallScore = 0;
+
+            students.forEach(st => {
+                let stTotal = 0;
+                let stScoreSum = 0;
+
+                cos.forEach(co => {
+                    const m = st.marks[co];
+                    sums[co].IPA1 += m.IPA1;
+                    sums[co].IPA2 += m.IPA2;
+                    sums[co].Assignment += m.Assignment;
+                    sums[co].EndSem += m.EndSem;
+
+                    const coTot = m.IPA1 + m.IPA2 + m.Assignment + m.EndSem;
+                    sums[co].Total += coTot;
+                    stTotal += coTot;
+
+                    const res = calculateCOScoreAndLevel(coTot, 10);
+                    sums[co].Score += res.score;
+                    stScoreSum += res.score;
+
+                    if (res.score === 3) sums[co].HighCount++;
+                    else if (res.score === 2) sums[co].MedCount++;
+                    else sums[co].LowCount++;
+                });
+
+                sumOverallTotal += stTotal;
+                sumOverallScore += (stScoreSum / 5);
+            });
+
+            // Update Footer Averages Row
+            cos.forEach(co => {
+                const setAvg = (id, val) => {
+                    const el = document.getElementById(`${role}_avg_${co}_${id}`);
+                    if (el) el.textContent = (val / count).toFixed(1);
+                };
+                setAvg('IPA1', sums[co].IPA1);
+                setAvg('IPA2', sums[co].IPA2);
+                setAvg('Assignment', sums[co].Assignment);
+                setAvg('EndSem', sums[co].EndSem);
+                setAvg('Total', sums[co].Total);
+
+                const scoreEl = document.getElementById(`${role}_avg_${co}_Score`);
+                if (scoreEl) {
+                    const avgScore = (sums[co].Score / count).toFixed(2);
+                    const res = calculateCOScoreAndLevel((sums[co].Total / count), 10);
+                    scoreEl.innerHTML = `${avgScore} <small>(${res.level})</small>`;
+                }
+            });
+
+            const overallTotEl = document.getElementById(`${role}_avg_overall_total`);
+            const overallScoreEl = document.getElementById(`${role}_avg_overall_score`);
+            if (overallTotEl) overallTotEl.textContent = (sumOverallTotal / count).toFixed(1);
+            if (overallScoreEl) overallScoreEl.textContent = (sumOverallScore / count).toFixed(2);
+
+            // Update KPI Stats Cards
+            const statsContainer = document.getElementById(`${role}COAttainmentStats`);
+            if (statsContainer) {
+                const overallAvgScore = (sumOverallScore / count).toFixed(2);
+                const overallLevel = overallAvgScore >= 2.5 ? 'High (3)' : (overallAvgScore >= 1.8 ? 'Medium (2)' : 'Low (1)');
+
+                let statsHtml = `
+                    <div class="stat-card">
+                        <h3>Total Students</h3>
+                        <div class="value" style="color:var(--primary);">${count}</div>
+                    </div>
+                `;
+
+                cos.forEach(co => {
+                    const avgScore = (sums[co].Score / count).toFixed(2);
+                    const res = calculateCOScoreAndLevel((sums[co].Total / count), 10);
+                    statsHtml += `
+                        <div class="stat-card">
+                            <h3>${co} Avg Attainment</h3>
+                            <div class="value" style="font-size:20px;">${avgScore} <small style="font-size:12px;">/ 3</small></div>
+                            <div style="font-size:11px;margin-top:2px;"><span class="${res.badgeClass}">${res.level}</span></div>
+                        </div>
+                    `;
+                });
+
+                statsHtml += `
+                    <div class="stat-card success" style="background:#eef2ff;border-color:#818cf8;">
+                        <h3 style="color:#3730a3;">Overall Subject Attainment</h3>
+                        <div class="value" style="color:#4338ca;font-size:22px;">${overallAvgScore} <small style="font-size:12px;">/ 3</small></div>
+                        <div style="font-size:12px;font-weight:700;color:#3730a3;margin-top:2px;">${overallLevel}</div>
+                    </div>
+                `;
+
+                statsContainer.innerHTML = statsHtml;
+            }
+
+            // Update Class Attainment Summary Matrix Table
+            const summaryContainer = document.getElementById(`${role}COAttainmentSummaryMatrix`);
+            if (summaryContainer) {
+                let sumHtml = `
+                    <div class="card" style="border:1px solid var(--border-md);border-radius:10px;">
+                        <h4 style="margin-top:0;display:flex;align-items:center;gap:8px;">
+                            <span>📊</span> Course Outcome (CO) Attainment Summary Matrix
+                        </h4>
+                        <table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:13px;">
+                            <thead>
+                                <tr style="background:var(--bg-surface2);">
+                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);text-align:left;">Course Outcome</th>
+                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);">Max CO Mark</th>
+                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);">Avg CO Mark</th>
+                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);color:#15803d;">High (&ge; 70%)</th>
+                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);color:#a16207;">Medium (60-69%)</th>
+                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);color:#b91c1c;">Low (&lt; 60%)</th>
+                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);">&ge; 70% Student %</th>
+                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);">Attainment Score</th>
+                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);">Final Level</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                cos.forEach(co => {
+                    const avgMark = (sums[co].Total / count).toFixed(2);
+                    const highPct = Math.round((sums[co].HighCount / count) * 100);
+                    const avgScore = (sums[co].Score / count).toFixed(2);
+                    const res = calculateCOScoreAndLevel(parseFloat(avgMark), 10);
+
+                    sumHtml += `
+                        <tr>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);font-weight:700;">${co}</td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;">10</td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:700;">${avgMark}</td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;color:#15803d;font-weight:700;">${sums[co].HighCount}</td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;color:#a16207;font-weight:700;">${sums[co].MedCount}</td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;color:#b91c1c;font-weight:700;">${sums[co].LowCount}</td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:700;">${highPct}%</td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:800;">${avgScore} / 3</td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;"><span class="${res.badgeClass}">${res.level}</span></td>
+                        </tr>
+                    `;
+                });
+
+                sumHtml += `</tbody></table></div>`;
+                summaryContainer.innerHTML = sumHtml;
+            }
+        }
+
+        function filterCOAttainmentTable(role) {
+            const input = document.getElementById(`${role}COAttainmentSearch`);
+            if (!input) return;
+            const query = input.value.toLowerCase().trim();
+            const rows = document.querySelectorAll(`#${role}COMatrixTable tbody tr.co-student-row`);
+
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+        }
+
+        async function saveCOAttainmentData(role) {
+            const dataObj = window[`__coAttainmentData_${role}`];
+            if (!dataObj) {
+                showToast('No CO Attainment data loaded to save.', 'warning');
+                return;
+            }
+
+            const { subjectId, year, semester, students } = dataObj;
+            if (!subjectId) return;
+
+            const docId = `${subjectId}_${year}_${semester}`;
+            const studentsMap = {};
+
+            students.forEach(st => {
+                studentsMap[st.id] = {
+                    name: st.name,
+                    enrollment: st.enrollment,
+                    marks: st.marks
+                };
+            });
+
+            try {
+                window.showLoadingMessage('Saving CO Attainment records...');
+                await window.setDoc(window.doc(window.db, 'co_attainments', docId), {
+                    subjectId,
+                    academicYear: year,
+                    semester,
+                    studentsMap,
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: window.currentUser ? window.currentUser.uid : 'system'
+                });
+                window.hideLoadingMessage();
+                showToast('CO Attainment records saved successfully!', 'success');
+            } catch (err) {
+                window.hideLoadingMessage();
+                showToast('Error saving CO Attainment: ' + err.message, 'danger');
+            }
+        }
+
+        async function exportCOAttainmentExcel(role) {
+            const dataObj = window[`__coAttainmentData_${role}`];
+            if (!dataObj) {
+                showToast('No CO Attainment data available to export.', 'warning');
+                return;
+            }
+
+            const { subjectId, year, semester, students } = dataObj;
+            const cos = ['CO1', 'CO2', 'CO3', 'CO4', 'CO5'];
+
+            try {
+                const subjectDoc = await window.getDoc(window.doc(window.db, 'subjects', subjectId));
+                const subData = subjectDoc.exists() ? subjectDoc.data() : { name: 'Subject', code: subjectId };
+
+                // Build Excel AOA (Array of Arrays)
+                const rows = [];
+                rows.push(['UNIVERSAL STUDENT EVALUATION SYSTEM - COURSE OUTCOME (CO) ATTAINMENT REPORT']);
+                rows.push([`Subject: ${subData.name} (${subData.code || ''})`, `Class: ${subData.class || ''} - Div ${subData.division || ''}`, `Academic Year: ${year}`, `Semester: ${semester}`]);
+                rows.push(['']);
+
+                // Multi-row Header
+                const header1 = ['#', 'Student Name', 'Enrollment'];
+                cos.forEach(co => {
+                    header1.push(co, '', '', '', '', '');
+                });
+                header1.push('Overall Total (/50)', 'Overall Avg Score (/3)');
+                rows.push(header1);
+
+                const header2 = ['', '', ''];
+                cos.forEach(co => {
+                    header2.push('IPA 1', 'IPA 2', 'Assignment', 'EndSem', 'CO Total (/10)', 'Score (/3)');
+                });
+                header2.push('', '');
+                rows.push(header2);
+
+                // Student Rows
+                students.forEach((st, idx) => {
+                    const r = [idx + 1, st.name, st.enrollment];
+                    let stTotal = 0;
+                    let stScoreSum = 0;
+
+                    cos.forEach(co => {
+                        const m = st.marks[co];
+                        const coTot = m.IPA1 + m.IPA2 + m.Assignment + m.EndSem;
+                        const res = calculateCOScoreAndLevel(coTot, 10);
+                        stTotal += coTot;
+                        stScoreSum += res.score;
+
+                        r.push(m.IPA1, m.IPA2, m.Assignment, m.EndSem, coTot, res.score);
+                    });
+
+                    r.push(stTotal, (stScoreSum / 5).toFixed(2));
+                    rows.push(r);
+                });
+
+                // Column Average Row
+                const avgRow = ['AVERAGE', 'ALL STUDENTS', ''];
+                const count = students.length;
+
+                cos.forEach(co => {
+                    let ipa1Sum = 0, ipa2Sum = 0, asgnSum = 0, eseSum = 0, totSum = 0, scoreSum = 0;
+                    students.forEach(st => {
+                        const m = st.marks[co];
+                        ipa1Sum += m.IPA1;
+                        ipa2Sum += m.IPA2;
+                        asgnSum += m.Assignment;
+                        eseSum += m.EndSem;
+                        const coTot = m.IPA1 + m.IPA2 + m.Assignment + m.EndSem;
+                        totSum += coTot;
+                        scoreSum += calculateCOScoreAndLevel(coTot, 10).score;
+                    });
+                    avgRow.push((ipa1Sum / count).toFixed(1), (ipa2Sum / count).toFixed(1), (asgnSum / count).toFixed(1), (eseSum / count).toFixed(1), (totSum / count).toFixed(1), (scoreSum / count).toFixed(2));
+                });
+
+                let overallTotSum = 0, overallScoreSum = 0;
+                students.forEach(st => {
+                    let stTot = 0, stScore = 0;
+                    cos.forEach(co => {
+                        const m = st.marks[co];
+                        const coTot = m.IPA1 + m.IPA2 + m.Assignment + m.EndSem;
+                        stTot += coTot;
+                        stScore += calculateCOScoreAndLevel(coTot, 10).score;
+                    });
+                    overallTotSum += stTot;
+                    overallScoreSum += (stScore / 5);
+                });
+                avgRow.push((overallTotSum / count).toFixed(1), (overallScoreSum / count).toFixed(2));
+                rows.push(avgRow);
+
+                rows.push(['']);
+                rows.push(['CO ATTAINMENT SUMMARY MATRIX']);
+                rows.push(['CO', 'Max Mark', 'Avg Mark', 'High (>=70%)', 'Medium (60-69%)', 'Low (<60%)', '>=70% Student %', 'Avg Attainment Score', 'Attainment Level']);
+
+                cos.forEach(co => {
+                    let tot = 0, scoreSum = 0, high = 0, med = 0, low = 0;
+                    students.forEach(st => {
+                        const m = st.marks[co];
+                        const coTot = m.IPA1 + m.IPA2 + m.Assignment + m.EndSem;
+                        tot += coTot;
+                        const res = calculateCOScoreAndLevel(coTot, 10);
+                        scoreSum += res.score;
+                        if (res.score === 3) high++;
+                        else if (res.score === 2) med++;
+                        else low++;
+                    });
+                    const avgMark = (tot / count).toFixed(2);
+                    const highPct = Math.round((high / count) * 100);
+                    const avgScore = (scoreSum / count).toFixed(2);
+                    const res = calculateCOScoreAndLevel(parseFloat(avgMark), 10);
+                    rows.push([co, 10, avgMark, high, med, low, `${highPct}%`, `${avgScore} / 3`, res.level]);
+                });
+
+                const ws = XLSX.utils.aoa_to_sheet(rows);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'CO Attainment');
+                XLSX.writeFile(wb, `CO_Attainment_${subData.code || subData.name}_${year}_${semester}.xlsx`);
+                showToast('CO Attainment Excel sheet downloaded successfully!', 'success');
+            } catch (err) {
+                console.error('Error exporting CO attainment to Excel:', err);
+                showToast('Export failed: ' + err.message, 'danger');
+            }
+        }
+
+        function exportCOAttainmentPDF(role) {
+            const tableEl = document.getElementById(`${role}COMatrixTable`);
+            const summaryEl = document.getElementById(`${role}COAttainmentSummaryMatrix`);
+            const dataObj = window[`__coAttainmentData_${role}`];
+            if (!tableEl || !dataObj) {
+                showToast('No table data to print.', 'warning');
+                return;
+            }
+
+            const win = window.open('', '_blank');
+            win.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>CO Attainment Report - ${dataObj.subjectId}</title>
+                    <style>
+                        body { font-family: sans-serif; padding: 20px; color: #111; }
+                        h2, h3 { color: #3730a3; margin-bottom: 6px; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 11px; }
+                        th, td { border: 1px solid #999; padding: 5px; text-align: center; }
+                        th { background: #eee; }
+                        .tr-avg-row td { background: #312e81 !important; color: #fff !important; font-weight: bold; }
+                        .co-mark-input { border: none; background: transparent; text-align: center; font-weight: bold; }
+                        @media print {
+                            body { padding: 0; }
+                            button { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h2>Course Outcome (CO) Attainment Official Report</h2>
+                    <p>Academic Year: <strong>${dataObj.year}</strong> | Semester: <strong>${dataObj.semester}</strong></p>
+                    <hr>
+                    ${tableEl.outerHTML}
+                    <br><br>
+                    ${summaryEl ? summaryEl.outerHTML : ''}
+                    <script>
+                        setTimeout(() => { window.print(); }, 500);
+                    </script>
+                </body>
+                </html>
+            `);
+            win.document.close();
+        }
+
+        // Global Window Function Registrations
+        window.loadCOAttainmentPage = loadCOAttainmentPage;
+        window.populateCOAttainmentSubjects = populateCOAttainmentSubjects;
+        window.fetchAndRenderCOAttainment = fetchAndRenderCOAttainment;
+        window.onCOAttainmentInputChanged = onCOAttainmentInputChanged;
+        window.filterCOAttainmentTable = filterCOAttainmentTable;
+        window.saveCOAttainmentData = saveCOAttainmentData;
+        window.exportCOAttainmentExcel = exportCOAttainmentExcel;
+        window.exportCOAttainmentPDF = exportCOAttainmentPDF;
+
 

@@ -12,17 +12,23 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
+
     <!-- Core UI & Processing Libraries (CDN with local fallback) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" onerror="this.onerror=null;this.src='lib/jspdf.umd.min.js'"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js" onerror="this.onerror=null;this.src='lib/pdf.min.js'"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" onerror="this.onerror=null;this.src='lib/xlsx.full.min.js'"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+        onerror="this.onerror=null;this.src='lib/jspdf.umd.min.js'"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"
+        onerror="this.onerror=null;this.src='lib/pdf.min.js'"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
+        onerror="this.onerror=null;this.src='lib/xlsx.full.min.js'"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
+
     <!-- Firebase SDK (Official Google CDN) -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js" onerror="this.onerror=null;this.src='lib/firebase-app-compat.js'"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js" onerror="this.onerror=null;this.src='lib/firebase-auth-compat.js'"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js" onerror="this.onerror=null;this.src='lib/firebase-firestore-compat.js'"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"
+        onerror="this.onerror=null;this.src='lib/firebase-app-compat.js'"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"
+        onerror="this.onerror=null;this.src='lib/firebase-auth-compat.js'"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"
+        onerror="this.onerror=null;this.src='lib/firebase-firestore-compat.js'"></script>
 
     <!-- App Identity & Styling -->
     <link rel="stylesheet" href="styles.css">
@@ -142,9 +148,13 @@
             <div class="dashboard-header">
                 <h2>HOD Dashboard</h2>
                 <div class="user-info">
-                    <span class="role-badge" style="background:rgba(124,58,237,.5);" id="hodRoleBadge">Head of Department</span>
-                    <button id="hodSyncBtn" class="btn btn-warning hidden sync-btn" style="width:auto;margin:0 10px;padding:8px 16px;background:#f59e0b;color:white;border:none;" onclick="OfflineSyncManager.processQueue()">Sync Pending</button>
-                    <button class="btn btn-secondary" style="width:auto;margin:0;padding:8px 16px;" onclick="logout()">Logout</button>
+                    <span class="role-badge" style="background:rgba(124,58,237,.5);" id="hodRoleBadge">Head of
+                        Department</span>
+                    <button id="hodSyncBtn" class="btn btn-warning hidden sync-btn"
+                        style="width:auto;margin:0 10px;padding:8px 16px;background:#f59e0b;color:white;border:none;"
+                        onclick="OfflineSyncManager.processQueue()">Sync Pending</button>
+                    <button class="btn btn-secondary" style="width:auto;margin:0;padding:8px 16px;"
+                        onclick="logout()">Logout</button>
                 </div>
             </div>
             <div class="dashboard-nav">
@@ -155,6 +165,7 @@
                 <button class="nav-btn" onclick="showHODSection('users',this)">Manage Users</button>
                 <button class="nav-btn" onclick="showHODSection('results',this)">View Results</button>
                 <button class="nav-btn" onclick="showHODSection('analytics',this)">Analytics</button>
+                <button class="nav-btn" onclick="showHODSection('coattainment',this)">CO Attainment</button>
             </div>
             <div class="dashboard-content">
 
@@ -286,7 +297,8 @@
                 <div id="hodAnalytics" class="section">
                     <div class="card">
                         <h3>Department Analytics</h3>
-                        <div class="alert alert-info">Visualize Course Outcome (CO) attainment and subject performance across your department.</div>
+                        <div class="alert alert-info">Visualize Course Outcome (CO) attainment and subject performance
+                            across your department.</div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Academic Year</label>
@@ -306,7 +318,8 @@
                         <button class="btn btn-primary" onclick="loadDepartmentAnalytics()">Generate Analytics</button>
                     </div>
 
-                    <div id="analyticsChartsContainer" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:20px;">
+                    <div id="analyticsChartsContainer"
+                        style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:20px;">
                         <div class="card">
                             <h4>Subject-wise Pass %</h4>
                             <canvas id="subjectPassChart"></canvas>
@@ -373,7 +386,8 @@
                             <label>Department</label>
                             <input type="text" id="adminCreateDepartment" placeholder="e.g., Computer Engineering">
                         </div>
-                        <button class="btn btn-primary" id="adminCreateBtn" onclick="adminCreateUser()">Create Account</button>
+                        <button class="btn btn-primary" id="adminCreateBtn" onclick="adminCreateUser()">Create
+                            Account</button>
                     </div>
                     <div class="card">
                         <h3>Teacher Account Control</h3>
@@ -468,7 +482,8 @@
                             </div>
                             <div class="filter-group" style="display:inline-block;min-width:160px;margin-right:12px;">
                                 <label>Filter by Marks:</label>
-                                <select id="hodResultsMarksFilter" class="form-control" onchange="filterResultsByMarks('hodResultsContainer', this.value)">
+                                <select id="hodResultsMarksFilter" class="form-control"
+                                    onchange="filterResultsByMarks('hodResultsContainer', this.value)">
                                     <option value="all">📊 All Marks</option>
                                     <option value="above20">🟢 > 20 Marks</option>
                                     <option value="above15">🔵 > 15 Marks</option>
@@ -493,6 +508,10 @@
                     </div>
                 </div>
 
+                <div id="hodCoattainment" class="section">
+                    <div id="hodCoattainmentContainer"></div>
+                </div>
+
             </div>
         </div>
 
@@ -502,8 +521,11 @@
                 <h2>Coordinator Dashboard</h2>
                 <div class="user-info">
                     <span class="role-badge">Coordinator</span>
-                    <button id="coordSyncBtn" class="btn btn-warning hidden sync-btn" style="width:auto;margin:0 10px;padding:8px 16px;background:#f59e0b;color:white;border:none;" onclick="OfflineSyncManager.processQueue()">Sync Pending</button>
-                    <button class="btn btn-secondary" style="width:auto;margin:0;padding:8px 16px;" onclick="logout()">Logout</button>
+                    <button id="coordSyncBtn" class="btn btn-warning hidden sync-btn"
+                        style="width:auto;margin:0 10px;padding:8px 16px;background:#f59e0b;color:white;border:none;"
+                        onclick="OfflineSyncManager.processQueue()">Sync Pending</button>
+                    <button class="btn btn-secondary" style="width:auto;margin:0;padding:8px 16px;"
+                        onclick="logout()">Logout</button>
                 </div>
             </div>
             <div class="dashboard-nav">
@@ -515,6 +537,7 @@
                 <button class="nav-btn" onclick="showCoordSection('teachers',this)">Teachers</button>
                 <button class="nav-btn" onclick="showCoordSection('results',this)">Results</button>
                 <button class="nav-btn" onclick="showCoordSection('questionbank',this)">Question Bank</button>
+                <button class="nav-btn" onclick="showCoordSection('coattainment',this)">CO Attainment</button>
             </div>
             <div class="dashboard-content">
 
@@ -699,6 +722,7 @@
                         <div class="btn-group" style="display:flex;gap:10px;flex-wrap:wrap;">
                             <button class="btn btn-success" onclick="openExamModal('ca_unit1')">Create CA: IPA 1 (CO1-3, 12m)</button>
                             <button class="btn btn-success" style="background:#059669;" onclick="openExamModal('ca_unit2')">Create CA: IPA 2 (CO4-5, 8m)</button>
+                            <button class="btn btn-warning" style="background:#8b5cf6;color:#fff;border-color:#7c3aed;" onclick="openExamModal('ca_assignment')">Create Assignment Exam (CO1-5, 5m)</button>
                             <button class="btn btn-info" onclick="openExamModal('ese')" style="background:#6366f1;color:#fff;border-color:#4f46e5;">Create End Sem Exam (CO1-5)</button>
                             <button class="btn btn-secondary" onclick="openExamModal('standard')">Custom Exam</button>
                         </div>
@@ -796,36 +820,64 @@
                     </div>
 
                     <!-- ====== Faculty Bulk Registration via Excel ====== -->
-                    <div class="card" style="border: 2px solid var(--primary); border-radius: 12px; position: relative; overflow: hidden;">
-                        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#4f46e5,#7c3aed,#06b6d4);"></div>
+                    <div class="card"
+                        style="border: 2px solid var(--primary); border-radius: 12px; position: relative; overflow: hidden;">
+                        <div
+                            style="position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#4f46e5,#7c3aed,#06b6d4);">
+                        </div>
                         <h3 style="display:flex;align-items:center;gap:8px;margin-top:4px;">
                             <span style="font-size:20px;">📋</span> Bulk Faculty Registration via Excel
                         </h3>
-                        <div class="alert alert-info" style="background:linear-gradient(135deg,rgba(79,70,229,0.08),rgba(6,182,212,0.08));border:1px solid rgba(79,70,229,0.2);border-radius:8px;padding:14px;">
+                        <div class="alert alert-info"
+                            style="background:linear-gradient(135deg,rgba(79,70,229,0.08),rgba(6,182,212,0.08));border:1px solid rgba(79,70,229,0.2);border-radius:8px;padding:14px;">
                             <strong>📌 Excel Format Guide:</strong><br>
-                            Upload an Excel sheet with the following <strong>7 columns</strong> (header row required):<br><br>
+                            Upload an Excel sheet with the following <strong>7 columns</strong> (header row
+                            required):<br><br>
                             <div style="overflow-x:auto;margin-top:8px;">
                                 <table style="font-size:12px;border-collapse:collapse;width:100%;min-width:520px;">
                                     <thead>
                                         <tr style="background:rgba(79,70,229,0.12);">
-                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">Faculty Name</th>
-                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">Div</th>
-                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:center;">Batch 1</th>
-                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:center;">Batch 2</th>
-                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:center;">Batch 3</th>
-                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">Email</th>
-                                            <th style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">Number</th>
+                                            <th
+                                                style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">
+                                                Faculty Name</th>
+                                            <th
+                                                style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">
+                                                Div</th>
+                                            <th
+                                                style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:center;">
+                                                Batch 1</th>
+                                            <th
+                                                style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:center;">
+                                                Batch 2</th>
+                                            <th
+                                                style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:center;">
+                                                Batch 3</th>
+                                            <th
+                                                style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">
+                                                Email</th>
+                                            <th
+                                                style="padding:6px 10px;border:1px solid rgba(79,70,229,0.2);text-align:left;">
+                                                Number</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <tr>
-                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);">Dr. Smith</td>
+                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);">Dr.
+                                                Smith</td>
                                             <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);">A</td>
-                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);text-align:center;">✓</td>
-                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);text-align:center;">✓</td>
-                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);text-align:center;"></td>
-                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);">smith@college.edu</td>
-                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);">9876543210</td>
+                                            <td
+                                                style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);text-align:center;">
+                                                ✓</td>
+                                            <td
+                                                style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);text-align:center;">
+                                                ✓</td>
+                                            <td
+                                                style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);text-align:center;">
+                                            </td>
+                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);">
+                                                smith@college.edu</td>
+                                            <td style="padding:5px 10px;border:1px solid rgba(79,70,229,0.15);">
+                                                9876543210</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -833,21 +885,26 @@
                             <br>
                             <strong>Rules:</strong>
                             <ul style="margin:6px 0 0 18px;font-size:12px;line-height:1.8;">
-                                <li><strong>Email</strong> → login username &nbsp;|&nbsp; <strong>Number</strong> → login password (min 6 digits)</li>
-                                <li>At least <strong>2 of 3 batches</strong> must be ticked per faculty row</li>
-                                <li>Tick marks accepted: <code>✓</code>, <code>TRUE</code>, <code>YES</code>, <code>1</code>, <code>x</code></li>
+                                <li><strong>Email</strong> → login username &nbsp;|&nbsp; <strong>Number</strong> →
+                                    login password (min 6 digits)</li>
+                                <li>At least <strong>1 batch</strong> (out of B1, B2, B3) must be ticked per faculty row</li>
+                                <li>Tick marks accepted: <code>✓</code>, <code>TRUE</code>, <code>YES</code>,
+                                    <code>1</code>, <code>x</code>, <code>B1</code>, <code>B2</code></li>
                                 <li>Accounts are auto-approved — faculty can login immediately</li>
                             </ul>
                         </div>
 
                         <div class="btn-group" style="margin-bottom:16px;flex-wrap:wrap;gap:10px;">
-                            <button class="btn btn-success btn-sm" id="downloadFacultyTemplateBtn" onclick="downloadFacultyTemplate()" style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                            <button class="btn btn-success btn-sm" id="downloadFacultyTemplateBtn"
+                                onclick="downloadFacultyTemplate()"
+                                style="display:flex;align-items:center;gap:6px;font-size:13px;">
                                 <span>⬇️</span> Download Blank Template
                             </button>
                         </div>
 
                         <div class="form-group" style="margin-bottom:14px;">
-                            <label for="facultyExcelFile" style="font-weight:600;font-size:14px;">📂 Select Excel File (.xlsx / .xls)</label>
+                            <label for="facultyExcelFile" style="font-weight:600;font-size:14px;">📂 Select Excel File
+                                (.xlsx / .xls)</label>
                             <input type="file" id="facultyExcelFile" accept=".xlsx,.xls"
                                 onchange="handleFacultyExcelUpload(event)"
                                 style="display:block;margin-top:8px;padding:8px;border:2px dashed var(--primary);border-radius:8px;width:100%;box-sizing:border-box;cursor:pointer;background:rgba(79,70,229,0.04);">
@@ -857,10 +914,12 @@
 
                         <div id="facultyImportActions" style="display:none;">
                             <div class="btn-group" style="gap:10px;flex-wrap:wrap;">
-                                <button class="btn btn-primary" id="importFacultyBtn" onclick="importFacultyFromExcel()" style="display:flex;align-items:center;gap:6px;">
+                                <button class="btn btn-primary" id="importFacultyBtn" onclick="importFacultyFromExcel()"
+                                    style="display:flex;align-items:center;gap:6px;">
                                     <span>🚀</span> Import Faculty Accounts
                                 </button>
-                                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('facultyExcelFile').value='';document.getElementById('facultyExcelPreview').innerHTML='';document.getElementById('facultyImportActions').style.display='none';">
+                                <button class="btn btn-secondary btn-sm"
+                                    onclick="document.getElementById('facultyExcelFile').value='';document.getElementById('facultyExcelPreview').innerHTML='';document.getElementById('facultyImportActions').style.display='none';">
                                     ✕ Clear
                                 </button>
                             </div>
@@ -871,8 +930,10 @@
 
                 <div class="card" style="margin-top:20px;">
                     <h3>&#128194; My Question Set Assignments (Distributed)</h3>
-                    <div class="alert alert-info" style="font-size:13px;background:var(--blue-50);border:1px solid var(--blue-200);border-radius:6px;padding:10px;margin-bottom:15px;color:var(--blue-900);">
-                        Below are the unique question sets distributed to you by the Coordinator using the <strong>Strict Allotment</strong> algorithm.
+                    <div class="alert alert-info"
+                        style="font-size:13px;background:var(--blue-50);border:1px solid var(--blue-200);border-radius:6px;padding:10px;margin-bottom:15px;color:var(--blue-900);">
+                        Below are the unique question sets distributed to you by the Coordinator using the
+                        <strong>Strict Allotment</strong> algorithm.
                     </div>
                     <div class="table-container">
                         <table>
@@ -887,7 +948,9 @@
                                 </tr>
                             </thead>
                             <tbody id="teacherQuestionAssignmentsList">
-                                <tr><td colspan="6" style="text-align:center;">No question sets assigned yet.</td></tr>
+                                <tr>
+                                    <td colspan="6" style="text-align:center;">No question sets assigned yet.</td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -967,6 +1030,7 @@
                                 onkeyup="filterResults()"></div>
                         <div class="btn-group" style="margin-bottom:14px;">
                             <button class="btn btn-success btn-sm" onclick="exportResultsExcel()">Export results to Excel</button>
+                            <button class="btn btn-primary btn-sm" onclick="exportResultsCSV()">Export results to CSV</button>
                             <button class="btn btn-info btn-sm" onclick="exportResultsPDF()">Download Marksheet PDF</button>
                             <button class="btn btn-danger btn-sm" onclick="finalizeResults()">Finalize Results</button>
                         </div>
@@ -1061,8 +1125,10 @@
                     <div class="card">
                         <h3>Bulk Import Questions from PDF</h3>
                         <div class="alert alert-info">
-                            <strong>PDF Import:</strong> This will extract all lines from your PDF as separate questions.
-                            Please select the target parameters below as they are applied to <strong>all</strong> extracted questions.
+                            <strong>PDF Import:</strong> This will extract all lines from your PDF as separate
+                            questions.
+                            Please select the target parameters below as they are applied to <strong>all</strong>
+                            extracted questions.
                         </div>
                         <div class="form-row">
                             <div class="form-group">
@@ -1129,7 +1195,8 @@
                     <div class="card">
                         <h3>Generate & Distribute Questions to Teachers</h3>
                         <div class="alert alert-success">
-                            <strong>How it works:</strong> Each teacher gets <strong>Units &times; Questions per Unit</strong>
+                            <strong>How it works:</strong> Each teacher gets <strong>Units &times; Questions per
+                                Unit</strong>
                             unique questions.
                             Example: 5 units &times; 3 questions = <strong>15 questions per teacher</strong>.
                             No teacher ever gets the same question twice. Different dates get different sets.
@@ -1174,7 +1241,8 @@
                                 </div>
                             </div>
                         </div>
-                        <button class="btn btn-primary" onclick="executeQuestionMigrationAndDistribution()">&#128640; Generate & Distribute
+                        <button class="btn btn-primary" onclick="executeQuestionMigrationAndDistribution()">&#128640;
+                            Generate & Distribute
                             Questions</button>
                     </div>
 
@@ -1191,6 +1259,10 @@
                     </div>
                 </div>
 
+                <div id="coordCoattainment" class="section">
+                    <div id="coordCoattainmentContainer"></div>
+                </div>
+
             </div>
         </div>
 
@@ -1200,16 +1272,21 @@
                 <h2>Teacher Dashboard</h2>
                 <div class="user-info">
                     <span class="role-badge" id="teacherRoleBadge">Teacher</span>
-                    <button id="teacherSyncBtn" class="btn btn-warning hidden sync-btn" style="width:auto;margin:0 10px;padding:8px 16px;background:#f59e0b;color:white;border:none;" onclick="OfflineSyncManager.processQueue()">Sync Pending</button>
-                    <button class="btn btn-secondary" style="width:auto;margin:0;padding:8px 16px;" onclick="logout()">Logout</button>
+                    <button id="teacherSyncBtn" class="btn btn-warning hidden sync-btn"
+                        style="width:auto;margin:0 10px;padding:8px 16px;background:#f59e0b;color:white;border:none;"
+                        onclick="OfflineSyncManager.processQueue()">Sync Pending</button>
+                    <button class="btn btn-secondary" style="width:auto;margin:0;padding:8px 16px;"
+                        onclick="logout()">Logout</button>
                 </div>
             </div>
             <div class="dashboard-nav">
-                <button class="nav-btn active" onclick="showTeacherSection('assignments',this)">Dashboard & Analytics</button>
+                <button class="nav-btn active" onclick="showTeacherSection('assignments',this)">Dashboard &
+                    Analytics</button>
                 <button class="nav-btn" onclick="showTeacherSection('students',this)">Students</button>
                 <button class="nav-btn" onclick="showTeacherSection('evaluate',this)">Evaluate</button>
                 <button class="nav-btn" onclick="showTeacherSection('results',this)">Results</button>
                 <button class="nav-btn" onclick="showTeacherSection('myquestions',this)">My Questions</button>
+                <button class="nav-btn" onclick="showTeacherSection('coattainment',this)">CO Attainment</button>
             </div>
             <div class="dashboard-content">
 
@@ -1222,30 +1299,39 @@
                         <p style="color:var(--gray-500);font-size:13px;margin-bottom:16px;">
                             Real-time student performance breakdown across all evaluated examinations:
                         </p>
-                        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
+                        <div class="stats-grid"
+                            style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
                             <div class="stat-card" style="background:#ecfdf5;border-color:#6ee7b7;text-align:center;">
                                 <h4 style="color:#065f46;margin:0 0 6px 0;font-size:13px;">> 20 Marks</h4>
-                                <div class="value" id="teacherAbove20Count" style="color:#047857;font-size:24px;font-weight:800;">0</div>
-                                <div style="font-size:11px;color:#059669;margin-top:4px;" id="teacherAbove20Pct">0%</div>
+                                <div class="value" id="teacherAbove20Count"
+                                    style="color:#047857;font-size:24px;font-weight:800;">0</div>
+                                <div style="font-size:11px;color:#059669;margin-top:4px;" id="teacherAbove20Pct">0%
+                                </div>
                             </div>
                             <div class="stat-card" style="background:#eff6ff;border-color:#93c5fd;text-align:center;">
                                 <h4 style="color:#1e40af;margin:0 0 6px 0;font-size:13px;">> 15 Marks</h4>
-                                <div class="value" id="teacherAbove15Count" style="color:#1d4ed8;font-size:24px;font-weight:800;">0</div>
-                                <div style="font-size:11px;color:#2563eb;margin-top:4px;" id="teacherAbove15Pct">0%</div>
+                                <div class="value" id="teacherAbove15Count"
+                                    style="color:#1d4ed8;font-size:24px;font-weight:800;">0</div>
+                                <div style="font-size:11px;color:#2563eb;margin-top:4px;" id="teacherAbove15Pct">0%
+                                </div>
                             </div>
                             <div class="stat-card" style="background:#fefce8;border-color:#fde047;text-align:center;">
                                 <h4 style="color:#854d0e;margin:0 0 6px 0;font-size:13px;">> 10 Marks</h4>
-                                <div class="value" id="teacherAbove10Count" style="color:#a16207;font-size:24px;font-weight:800;">0</div>
-                                <div style="font-size:11px;color:#ca8a04;margin-top:4px;" id="teacherAbove10Pct">0%</div>
+                                <div class="value" id="teacherAbove10Count"
+                                    style="color:#a16207;font-size:24px;font-weight:800;">0</div>
+                                <div style="font-size:11px;color:#ca8a04;margin-top:4px;" id="teacherAbove10Pct">0%
+                                </div>
                             </div>
                             <div class="stat-card" style="background:#fff7ed;border-color:#ffedd5;text-align:center;">
                                 <h4 style="color:#9a3412;margin:0 0 6px 0;font-size:13px;">> 5 Marks</h4>
-                                <div class="value" id="teacherAbove5Count" style="color:#c2410c;font-size:24px;font-weight:800;">0</div>
+                                <div class="value" id="teacherAbove5Count"
+                                    style="color:#c2410c;font-size:24px;font-weight:800;">0</div>
                                 <div style="font-size:11px;color:#ea580c;margin-top:4px;" id="teacherAbove5Pct">0%</div>
                             </div>
                             <div class="stat-card" style="background:#fef2f2;border-color:#fca5a5;text-align:center;">
                                 <h4 style="color:#991b1b;margin:0 0 6px 0;font-size:13px;">≤ 5 Marks</h4>
-                                <div class="value" id="teacherBelow5Count" style="color:#dc2626;font-size:24px;font-weight:800;">0</div>
+                                <div class="value" id="teacherBelow5Count"
+                                    style="color:#dc2626;font-size:24px;font-weight:800;">0</div>
                                 <div style="font-size:11px;color:#ef4444;margin-top:4px;" id="teacherBelow5Pct">0%</div>
                             </div>
                         </div>
@@ -1253,7 +1339,8 @@
 
                     <div class="card">
                         <h3>My Subject Assignments</h3>
-                        <div class="alert alert-info"><strong>Tip:</strong> Each subject below is assigned to you by the Coordinator. Use the tabs above to manage students, evaluate, and view results.</div>
+                        <div class="alert alert-info"><strong>Tip:</strong> Each subject below is assigned to you by the
+                            Coordinator. Use the tabs above to manage students, evaluate, and view results.</div>
                         <table>
                             <thead>
                                 <tr>
@@ -1305,10 +1392,12 @@
                 <div id="teacherExams" class="section">
                     <div class="card">
                         <h3>Available Exams</h3>
-                        <div class="alert alert-info">These exams were successfully created by the Coordinator using the Unified System.</div>
+                        <div class="alert alert-info">These exams were successfully created by the Coordinator using the
+                            Unified System.</div>
                         <div class="form-group" style="margin-top:15px;">
                             <label>Filter by Subject</label>
-                            <select id="teacherExamsFilter" onchange="loadTeacherExamsList()" style="width:100% !important;">
+                            <select id="teacherExamsFilter" onchange="loadTeacherExamsList()"
+                                style="width:100% !important;">
                                 <option value="">All Subjects</option>
                             </select>
                         </div>
@@ -1389,9 +1478,10 @@
                         <div style="display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
                             <button class="btn btn-success btn-sm" onclick="exportTeacherResults()"
                                 id="teacherExportBtn" style="width:auto;margin:0;">Export Results to Excel</button>
-                            <button class="btn btn-primary btn-sm" onclick="printAllMarksheets()"
-                                id="teacherPrintBtn" style="width:auto;margin:0;">Print Marksheets</button>
-                            <select id="teacherResultsMarksFilter" onchange="filterResultsByMarks('teacherResultsContainer', this.value)"
+                            <button class="btn btn-primary btn-sm" onclick="printAllMarksheets()" id="teacherPrintBtn"
+                                style="width:auto;margin:0;">Print Marksheets</button>
+                            <select id="teacherResultsMarksFilter"
+                                onchange="filterResultsByMarks('teacherResultsContainer', this.value)"
                                 style="width:auto;min-width:160px;padding:8px 12px;border:2px solid #e5e7eb;border-radius:8px;font-size:13px;background:#fff;font-weight:600;color:var(--text-main);">
                                 <option value="all">📊 All Marks</option>
                                 <option value="above20">🟢 > 20 Marks</option>
@@ -1432,10 +1522,16 @@
                                 </select>
                             </div>
                         </div>
-                        <button class="btn btn-success btn-sm" onclick="exportTeacherQuestionsToExcel()">Export to Excel</button>
-                        <button class="btn btn-danger btn-sm" onclick="exportTeacherAssignedQuestionsToPDF()">Export to PDF</button>
+                        <button class="btn btn-success btn-sm" onclick="exportTeacherQuestionsToExcel()">Export to
+                            Excel</button>
+                        <button class="btn btn-danger btn-sm" onclick="exportTeacherAssignedQuestionsToPDF()">Export to
+                            PDF</button>
                         <div id="teacherAssignedQuestionsList" style="margin-top:16px;"></div>
                     </div>
+                </div>
+
+                <div id="teacherCoattainment" class="section">
+                    <div id="teacherCoattainmentContainer"></div>
                 </div>
 
             </div>
@@ -1447,8 +1543,11 @@
                 <h2>Student Dashboard</h2>
                 <div class="user-info">
                     <span class="role-badge">Student</span>
-                    <button id="studentSyncBtn" class="btn btn-warning hidden sync-btn" style="width:auto;margin:0 10px;padding:8px 16px;background:#f59e0b;color:white;border:none;" onclick="OfflineSyncManager.processQueue()">Sync Pending</button>
-                    <button class="btn btn-secondary" style="width:auto;margin:0;padding:8px 16px;" onclick="logout()">Logout</button>
+                    <button id="studentSyncBtn" class="btn btn-warning hidden sync-btn"
+                        style="width:auto;margin:0 10px;padding:8px 16px;background:#f59e0b;color:white;border:none;"
+                        onclick="OfflineSyncManager.processQueue()">Sync Pending</button>
+                    <button class="btn btn-secondary" style="width:auto;margin:0;padding:8px 16px;"
+                        onclick="logout()">Logout</button>
                 </div>
             </div>
             <div class="dashboard-nav">
@@ -1538,9 +1637,9 @@
         window.__authListeners = [];
         window.failedLoginAttempts = new Map();
         window.__appReady = false;
-        
+
         // Monitoring script load failures
-        window.addEventListener('error', function(e) {
+        window.addEventListener('error', function (e) {
             if (e.target && e.target.tagName === 'SCRIPT') {
                 console.error('CRITICAL: Script failed to load:', e.target.src);
                 if (typeof showToast === 'function') showToast('Critical file failed to load. Please check your internet connection and refresh.', 'danger', 10000);
