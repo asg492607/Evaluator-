@@ -9758,7 +9758,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws1, 'Page 1 - Rubrics & Info');
                 XLSX.utils.book_append_sheet(wb, ws2, 'Page 2 - Student Marksheet');
-                XLSX.utils.book_append_sheet(wb, ws3, 'Page 3 - Direct Attainment');
+                XLSX.utils.book_append_sheet(wb, ws3, 'Page 3 - CO Attainment');
 
                 const fileName = `${(subjectData.name || 'Marksheet').replace(/[^a-zA-Z0-9]/g, '_')}_${subjectData.division || 'Div'}_Official_${Date.now()}.xlsx`;
                 XLSX.writeFile(wb, fileName);
@@ -11993,9 +11993,9 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 
                 const ws = XLSX.utils.aoa_to_sheet(rows);
                 const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, 'Page 3 - Direct Attainment');
-                XLSX.writeFile(wb, `Direct_Attainment_${subData.code || subData.name}_${year}_${semester}.xlsx`);
-                showToast('Direct Attainment Excel sheet downloaded successfully!', 'success');
+                XLSX.utils.book_append_sheet(wb, ws, 'Page 3 - CO Attainment');
+                XLSX.writeFile(wb, `CO_Attainment_${subData.code || subData.name}_${year}_${semester}.xlsx`);
+                showToast('CO Attainment Excel sheet downloaded successfully!', 'success');
             } catch (err) {
                 console.error('Error exporting CO attainment to Excel:', err);
                 showToast('Export failed: ' + err.message, 'danger');
