@@ -971,6 +971,10 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 loadResultsForHOD();
             } else if (section === 'coattainment') {
                 loadCOAttainmentPage('hod');
+            } else if (section === 'covisualization') {
+                loadCOVisualizationPage('hod');
+            } else if (section === 'finalresult') {
+                loadFinalResultPage('hod');
             }
         }
 
@@ -1284,6 +1288,10 @@ ${isTeacher ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 }
             } else if (section === 'coattainment') {
                 loadCOAttainmentPage('coord');
+            } else if (section === 'covisualization') {
+                loadCOVisualizationPage('coord');
+            } else if (section === 'finalresult') {
+                loadFinalResultPage('coord');
             }
         }
 
@@ -3538,6 +3546,12 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             } else if (section === 'coattainment') {
                 document.getElementById('teacherCoattainment').classList.add('active');
                 loadCOAttainmentPage('teacher');
+            } else if (section === 'covisualization') {
+                document.getElementById('teacherCovisualization').classList.add('active');
+                loadCOVisualizationPage('teacher');
+            } else if (section === 'finalresult') {
+                document.getElementById('teacherFinalresult').classList.add('active');
+                loadFinalResultPage('teacher');
             }
             if (btn) btn.classList.add('active');
         }
@@ -5720,8 +5734,11 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 <strong>Subject:</strong> ${subjectData.name || 'N/A'} | 
  <strong>Class:</strong> ${subjectData.class || 'N/A'}-${subjectData.division || 'N/A'} | 
  <strong>Total Students:</strong> ${studentsSnap.size}
+ <span style="margin-left:10px;font-size:12px;background:#e0e7ff;color:#3730a3;padding:3px 8px;border-radius:10px;font-weight:600;">
+ 🎯 Total Attainment = (Direct × 0.8) + (Indirect × 0.2)
+ </span>
 </div>
-<button class="btn btn-success btn-sm" onclick="exportAllStudentsResultsCSV('${examId}')">Export All Results to CSV</button>
+<button class="btn btn-success btn-sm" onclick="exportAllStudentsResultsCSV('${examId}')">Export All Results to Excel</button>
 </div>
 <div class="table-container" style="overflow-x:auto;">
 <table>
@@ -9309,7 +9326,35 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
          */
         async function exportOfficialUniversityFormatExcel(examId) {
             if (!examId) {
-                showToast('Please select an exam first', 'warning');
+                // Try active role final result / CO attainment dropdowns
+                const teacherExam = document.getElementById('teacherFinalResultExamSelect')?.value || document.getElementById('teacherResultsExam')?.value;
+                const coordExam = document.getElementById('coordFinalResultExamSelect')?.value || document.getElementById('coordResultsExam')?.value;
+                const hodExam = document.getElementById('hodFinalResultExamSelect')?.value || document.getElementById('hodResultsExam')?.value;
+                const activeSelect = document.querySelector('select[id$="ExamSelect"]')?.value;
+
+                examId = teacherExam || coordExam || hodExam || activeSelect;
+            }
+
+            if (!examId) {
+                // Try fetching the first exam for the currently selected subject
+                const activeSubjectId = document.querySelector('select[id*="SubjectSelect"]')?.value || document.querySelector('select[id*="Subject"]')?.value;
+                if (activeSubjectId) {
+                    try {
+                        const examsSnap = await window.getDocs(window.query(
+                            window.collection(window.db, 'exams'),
+                            window.where('subjectId', '==', activeSubjectId)
+                        ));
+                        if (!examsSnap.empty) {
+                            examId = examsSnap.docs[0].id;
+                        }
+                    } catch (e) {
+                        console.warn('Error fetching exam by subjectId:', e);
+                    }
+                }
+            }
+
+            if (!examId) {
+                showToast('Please select an Exam from the dropdown controls above to export the Official Excel Marksheet.', 'warning', 5000);
                 return;
             }
 
@@ -9499,16 +9544,227 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     { s: { r: 2, c: 0 }, e: { r: 2, c: numCols2 - 1 } }
                 ];
 
-                // Append both pages to workbook
+                // ==========================================
+                // PAGE 3: DIRECT COURSE OUTCOME (CO) ATTAINMENT SHEET
+                // ==========================================
+                const aoa3 = [];
+                aoa3.push(['MIT ADT UNIVERSITY, SCHOOL OF COMPUTING, PUNE']);
+                aoa3.push(['Direct Course Outcome (CO) Attainment Report']);
+                aoa3.push([`Subject: ${subjectData.name || 'IDS'} (${subjectData.code || '23CSE101'})  |  Division: ${subjectData.division || 'B'}  |  Date: ${new Date().toLocaleDateString()}  |  Examiner: ${teacherName}`]);
+                aoa3.push([]); // Spacer
+
+                // Table 1: Student CO Attainment Scores
+                const coScoreHeaders = [];
+                cos.forEach(co => {
+                    coScoreHeaders.push(`${co.name} Mark`, `${co.name} Score (/3)`);
+                });
+
+                aoa3.push([
+                    'Sr. No.',
+                    'Enrollment No',
+                    'Name of the Student',
+                    ...coScoreHeaders,
+                    `Total Marks (/ ${totalExamMaxMarks})`,
+                    'Avg Attainment Score (/3)',
+                    'Attainment Level'
+                ]);
+
+                // Trackers for CO Summary Matrix
+                const coStats = cos.map(co => ({
+                    coName: co.name,
+                    maxMark: co.criteria?.[0]?.maxMarks || 5,
+                    totalMarks: 0,
+                    totalScores: 0,
+                    highCount: 0,  // Score 3 (>= 70%)
+                    medCount: 0,   // Score 2 (60-69%)
+                    lowCount: 0,   // Score 1 (< 60%)
+                    studentCount: 0
+                }));
+
+                let studentSrNo = 1;
+                studentsSnap.forEach(studentDoc => {
+                    const student = studentDoc.data();
+                    const res = resultsMap[studentDoc.id];
+                    const isAbsent = !res || res.absent === true;
+
+                    const rowScores = [];
+                    let stTotalMarks = 0;
+                    let stScoreSum = 0;
+
+                    cos.forEach((co, cidx) => {
+                        const coMax = co.criteria?.[0]?.maxMarks || 5;
+                        const key = `${co.name}_C1`;
+                        const legacyKey = `CO${cidx + 1}_C1`;
+                        const rawVal = isAbsent ? null : (res?.coMarks?.[key] ?? res?.coMarks?.[legacyKey] ?? res?.coMarks?.[co.name] ?? null);
+
+                        let markVal = '-';
+                        let scoreVal = '-';
+
+                        if (!isAbsent && rawVal !== null && rawVal !== undefined) {
+                            const numericMark = parseFloat(rawVal) || 0;
+                            markVal = numericMark;
+                            const coRes = calculateCOScoreAndLevel(numericMark, coMax);
+                            scoreVal = coRes.score;
+
+                            stTotalMarks += numericMark;
+                            stScoreSum += coRes.score;
+
+                            // Update stats
+                            coStats[cidx].totalMarks += numericMark;
+                            coStats[cidx].totalScores += coRes.score;
+                            coStats[cidx].studentCount++;
+                            if (coRes.score === 3) coStats[cidx].highCount++;
+                            else if (coRes.score === 2) coStats[cidx].medCount++;
+                            else coStats[cidx].lowCount++;
+                        } else if (isAbsent) {
+                            markVal = 'AB';
+                            scoreVal = 'AB';
+                        }
+
+                        rowScores.push(markVal, scoreVal);
+                    });
+
+                    const avgStudentScore = !isAbsent && cos.length > 0 ? (stScoreSum / cos.length).toFixed(2) : 'AB';
+                    const overallStudentLevel = !isAbsent ? (avgStudentScore >= 2.5 ? 'High' : (avgStudentScore >= 1.8 ? 'Medium' : 'Low')) : 'Absent';
+
+                    aoa3.push([
+                        studentSrNo,
+                        student.enrollment || '',
+                        sanitizeString(student.name || ''),
+                        ...rowScores,
+                        isAbsent ? 'AB' : stTotalMarks.toFixed(1),
+                        avgStudentScore,
+                        overallStudentLevel
+                    ]);
+
+                    studentSrNo++;
+                });
+
+                const cfg = window.attainmentFormulaConfig || { directWeight: 80, indirectWeight: 20, highPct: 70, medPct: 60 };
+                const dWeight = cfg.directWeight / 100;
+                const iWeight = cfg.indirectWeight / 100;
+
+                // Summary Matrix Section
+                aoa3.push([]); // Spacer
+                aoa3.push(['DIRECT, INDIRECT & TOTAL CO ATTAINMENT SUMMARY MATRIX']);
+                aoa3.push([`Formula: Total Attainment = (Direct Attainment Score * ${cfg.directWeight}%) + (Indirect Attainment Score * ${cfg.indirectWeight}%)`]);
+                aoa3.push([
+                    'Course Outcome',
+                    'Max Mark',
+                    'Avg Mark Obtained',
+                    `Direct Attainment Score (/3) [${cfg.directWeight}%]`,
+                    `Indirect Attainment Score (/3) [${cfg.indirectWeight}%]`,
+                    'Total Attainment Score (/3)',
+                    'Final Total Attainment Level'
+                ]);
+
+                let totalClassStudents = studentsSnap.size || 1;
+                let indirectMap = window.__coAttainmentData_teacher?.indirectAttainment 
+                    || window.__coAttainmentData_coord?.indirectAttainment 
+                    || window.__coAttainmentData_hod?.indirectAttainment;
+
+                if (!indirectMap && subjectData.id) {
+                    try {
+                        const coAttDoc = await window.getDoc(window.doc(window.db, 'co_attainments', `${subjectData.id}_2025-26_SEM-1`));
+                        if (coAttDoc.exists() && coAttDoc.data().indirectAttainment) {
+                            indirectMap = coAttDoc.data().indirectAttainment;
+                        }
+                    } catch (e) {
+                        console.warn('Could not fetch indirect attainment doc for excel export:', e);
+                    }
+                }
+                if (!indirectMap) {
+                    indirectMap = { CO1: 3.0, CO2: 3.0, CO3: 3.0, CO4: 3.0, CO5: 3.0 };
+                }
+
+                coStats.forEach(st => {
+                    const count = st.studentCount || totalClassStudents;
+                    const avgMark = count > 0 ? (st.totalMarks / count).toFixed(2) : '0.00';
+                    const directScore = count > 0 ? parseFloat((st.totalScores / count).toFixed(2)) : 0;
+                    const indirectScore = parseFloat((indirectMap[st.coName] !== undefined ? indirectMap[st.coName] : 3.0).toFixed(2));
+                    const totalAttainmentScore = ((directScore * dWeight) + (indirectScore * iWeight)).toFixed(2);
+                    const finalTotalLevel = totalAttainmentScore >= 2.5 ? 'High (Level 3)' : (totalAttainmentScore >= 1.8 ? 'Medium (Level 2)' : 'Low (Level 1)');
+
+                    aoa3.push([
+                        st.coName,
+                        st.maxMark,
+                        avgMark,
+                        `${directScore.toFixed(2)} / 3`,
+                        `${indirectScore.toFixed(2)} / 3`,
+                        `${totalAttainmentScore} / 3`,
+                        finalTotalLevel
+                    ]);
+                });
+
+                // Step 7: Gap Analysis Section
+                aoa3.push([]); // Spacer
+                aoa3.push(['STEP 7: COURSE OUTCOME (CO) ATTAINMENT GAP ANALYSIS']);
+                aoa3.push(['Formula: Gap = Current Total Attainment Score - Last Year/Sem Attainment Score']);
+                aoa3.push([
+                    'Course Outcome',
+                    'Current Attainment Score (/3)',
+                    'Last Year/Sem Attainment Score (/3)',
+                    'Attainment Gap (Current - Last Year)',
+                    'Status',
+                    'Action Plan & Recommended Remedy'
+                ]);
+
+                const prevScoresMap = (window.__coAttainmentData_teacher?.previousAttainment 
+                    || window.__coAttainmentData_coord?.previousAttainment 
+                    || window.__coAttainmentData_hod?.previousAttainment 
+                    || { CO1: 2.4, CO2: 2.5, CO3: 2.2, CO4: 2.6, CO5: 2.4 });
+
+                coStats.forEach(st => {
+                    const count = st.studentCount || totalClassStudents;
+                    const directScore = count > 0 ? parseFloat((st.totalScores / count).toFixed(2)) : 0;
+                    const indirectScore = parseFloat((indirectMap[st.coName] !== undefined ? indirectMap[st.coName] : 3.0).toFixed(2));
+                    const currentScore = parseFloat(((directScore * dWeight) + (indirectScore * iWeight)).toFixed(2));
+                    const prevScore = parseFloat((prevScoresMap[st.coName] !== undefined ? prevScoresMap[st.coName] : 2.5).toFixed(2));
+                    const gap = parseFloat((currentScore - prevScore).toFixed(2));
+
+                    const status = gap >= 0 ? `Target Met (+${gap.toFixed(2)})` : `Gap Identified (${gap.toFixed(2)})`;
+                    const actionPlan = gap >= 0 
+                        ? 'Target achieved. Maintain current pedagogical methods and practical sessions.' 
+                        : `Attainment shortfall of ${Math.abs(gap).toFixed(2)} marks. Remedial classes and extra practice tutorials recommended for ${st.coName}.`;
+
+                    aoa3.push([
+                        st.coName,
+                        `${currentScore.toFixed(2)} / 3`,
+                        `${prevScore.toFixed(2)} / 3`,
+                        (gap >= 0 ? `+${gap.toFixed(2)}` : gap.toFixed(2)),
+                        status,
+                        actionPlan
+                    ]);
+                });
+
+                const ws3 = XLSX.utils.aoa_to_sheet(aoa3);
+                const numCols3 = 3 + (cos.length * 2) + 3;
+                ws3['!cols'] = [
+                    { wch: 10 }, // Sr No
+                    { wch: 18 }, // Enrollment No
+                    { wch: 28 }, // Name of Student
+                    ...coScoreHeaders.map(() => ({ wch: 14 })),
+                    { wch: 22 }, // Total Marks
+                    { wch: 24 }, // Avg Score
+                    { wch: 18 }  // Level
+                ];
+                ws3['!merges'] = [
+                    { s: { r: 0, c: 0 }, e: { r: 0, c: numCols3 - 1 } },
+                    { s: { r: 1, c: 0 }, e: { r: 1, c: numCols3 - 1 } },
+                    { s: { r: 2, c: 0 }, e: { r: 2, c: numCols3 - 1 } }
+                ];
+
+                // Append all 3 pages to workbook
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws1, 'Page 1 - Rubrics & Info');
                 XLSX.utils.book_append_sheet(wb, ws2, 'Page 2 - Student Marksheet');
+                XLSX.utils.book_append_sheet(wb, ws3, 'Page 3 - Direct Attainment');
 
                 const fileName = `${(subjectData.name || 'Marksheet').replace(/[^a-zA-Z0-9]/g, '_')}_${subjectData.division || 'Div'}_Official_${Date.now()}.xlsx`;
                 XLSX.writeFile(wb, fileName);
 
                 if (typeof window.hideLoadingMessage === 'function') window.hideLoadingMessage();
-                showToast('📊 Official University Marksheet Excel downloaded (Page 1 & 2)!', 'success', 5000);
+                showToast('📊 Official Marksheet Excel downloaded with Page 1 (Rubrics), Page 2 (Results), and Page 3 (Direct Attainment)!', 'success', 5000);
 
             } catch (err) {
                 if (typeof window.hideLoadingMessage === 'function') window.hideLoadingMessage();
@@ -9897,11 +10153,135 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 
         const CO_MAX_MARKS = { CO1: 10, CO2: 10, CO3: 10, CO4: 10, CO5: 10 };
 
+        // Dynamic HOD Attainment Formula Config
+        window.attainmentFormulaConfig = {
+            directWeight: 80,
+            indirectWeight: 20,
+            highPct: 70,
+            medPct: 60
+        };
+
+        async function loadAttainmentFormulaConfig() {
+            try {
+                const docSnap = await window.getDoc(window.doc(window.db, 'settings', 'attainment_formula'));
+                if (docSnap.exists()) {
+                    const d = docSnap.data();
+                    window.attainmentFormulaConfig = {
+                        directWeight: parseFloat(d.directWeight) || 80,
+                        indirectWeight: parseFloat(d.indirectWeight) || 20,
+                        highPct: parseFloat(d.highPct) || 70,
+                        medPct: parseFloat(d.medPct) || 60
+                    };
+                }
+            } catch (err) {
+                console.warn('Using default attainment formula config:', err);
+            }
+        }
+        window.loadAttainmentFormulaConfig = loadAttainmentFormulaConfig;
+
+        async function saveHODAttainmentFormulaConfig(role) {
+            if (role !== 'hod') {
+                showToast('Only HOD can modify the department attainment formula.', 'warning');
+                return;
+            }
+
+            const dWeight = parseFloat(document.getElementById('hodDirectWeightInput')?.value) || 80;
+            const iWeight = parseFloat(document.getElementById('hodIndirectWeightInput')?.value) || 20;
+            const hPct = parseFloat(document.getElementById('hodHighPctInput')?.value) || 70;
+            const mPct = parseFloat(document.getElementById('hodMedPctInput')?.value) || 60;
+
+            if (dWeight + iWeight !== 100) {
+                showToast(`Weightage sum must equal 100%. Current sum: ${(dWeight + iWeight).toFixed(1)}%`, 'warning');
+                return;
+            }
+
+            if (mPct >= hPct) {
+                showToast('Medium cutoff percentage must be less than High cutoff percentage.', 'warning');
+                return;
+            }
+
+            const newConfig = {
+                directWeight: dWeight,
+                indirectWeight: iWeight,
+                highPct: hPct,
+                medPct: mPct,
+                updatedAt: new Date().toISOString(),
+                updatedBy: window.currentUser ? window.currentUser.uid : 'hod'
+            };
+
+            try {
+                window.showLoadingMessage('Saving HOD Attainment Formula...');
+                await window.setDoc(window.doc(window.db, 'settings', 'attainment_formula'), newConfig);
+                window.attainmentFormulaConfig = newConfig;
+                window.hideLoadingMessage();
+                showToast('⚙️ HOD Attainment Formula & Cutoffs saved globally!', 'success');
+
+                renderHODFormulaConfigPanel(role);
+                recalculateAllCOAttainmentAverages(role);
+            } catch (err) {
+                window.hideLoadingMessage();
+                showToast('Failed to save formula: ' + err.message, 'danger');
+            }
+        }
+        window.saveHODAttainmentFormulaConfig = saveHODAttainmentFormulaConfig;
+
+        function renderHODFormulaConfigPanel(role) {
+            const cardEl = document.getElementById(`${role}HODFormulaCard`);
+            if (!cardEl) return;
+
+            const cfg = window.attainmentFormulaConfig || { directWeight: 80, indirectWeight: 20, highPct: 70, medPct: 60 };
+
+            if (role === 'hod') {
+                cardEl.innerHTML = `
+                    <div class="card" style="background:#eef2ff;border:1px solid #818cf8;border-radius:10px;padding:16px;margin-bottom:20px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+                            <h4 style="margin:0;display:flex;align-items:center;gap:8px;color:#3730a3;">
+                                <span>👑</span> HOD Attainment Formula & Threshold Configuration (Department Settings)
+                            </h4>
+                            <button class="btn btn-sm btn-primary" onclick="saveHODAttainmentFormulaConfig('${role}')" style="background:#4338ca;border:none;padding:6px 14px;font-weight:700;">
+                                💾 Save Department Formula
+                            </button>
+                        </div>
+                        <div style="font-size:12px;color:#3730a3;margin-bottom:12px;background:rgba(255,255,255,0.7);padding:8px 12px;border-radius:6px;">
+                            * As Head of Department (HOD), you can configure the dynamic formula weightages and percentage thresholds applied across all subject reports.
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
+                            <div style="background:#fff;padding:10px;border-radius:8px;border:1px solid #c7d2fe;">
+                                <label style="font-size:11px;font-weight:700;color:#3730a3;display:block;margin-bottom:4px;">Direct Weight (%)</label>
+                                <input type="number" id="hodDirectWeightInput" min="0" max="100" step="5" value="${cfg.directWeight}" style="width:100%;font-weight:700;padding:5px 8px;border-radius:4px;border:1px solid #a5b4fc;" onchange="document.getElementById('hodIndirectWeightInput').value = 100 - parseFloat(this.value || 0)">
+                            </div>
+                            <div style="background:#fff;padding:10px;border-radius:8px;border:1px solid #c7d2fe;">
+                                <label style="font-size:11px;font-weight:700;color:#3730a3;display:block;margin-bottom:4px;">Indirect Weight (%)</label>
+                                <input type="number" id="hodIndirectWeightInput" min="0" max="100" step="5" value="${cfg.indirectWeight}" style="width:100%;font-weight:700;padding:5px 8px;border-radius:4px;border:1px solid #a5b4fc;" onchange="document.getElementById('hodDirectWeightInput').value = 100 - parseFloat(this.value || 0)">
+                            </div>
+                            <div style="background:#fff;padding:10px;border-radius:8px;border:1px solid #c7d2fe;">
+                                <label style="font-size:11px;font-weight:700;color:#3730a3;display:block;margin-bottom:4px;">High Cutoff (% &ge;)</label>
+                                <input type="number" id="hodHighPctInput" min="40" max="100" step="1" value="${cfg.highPct}" style="width:100%;font-weight:700;padding:5px 8px;border-radius:4px;border:1px solid #a5b4fc;">
+                            </div>
+                            <div style="background:#fff;padding:10px;border-radius:8px;border:1px solid #c7d2fe;">
+                                <label style="font-size:11px;font-weight:700;color:#3730a3;display:block;margin-bottom:4px;">Medium Cutoff (% &ge;)</label>
+                                <input type="number" id="hodMedPctInput" min="30" max="90" step="1" value="${cfg.medPct}" style="width:100%;font-weight:700;padding:5px 8px;border-radius:4px;border:1px solid #a5b4fc;">
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                cardEl.innerHTML = `
+                    <div style="background:#e0e7ff;border:1px solid #c7d2fe;padding:10px 14px;border-radius:8px;margin-bottom:16px;font-size:12px;color:#3730a3;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                        <span><strong>👑 Active Department Formula (Set by HOD):</strong> Total Attainment = (Direct × ${cfg.directWeight}%) + (Indirect × ${cfg.indirectWeight}%)</span>
+                        <span><strong>Direct Cutoffs:</strong> High &ge; ${cfg.highPct}% (Score 3) | Medium &ge; ${cfg.medPct}% (Score 2) | Low &lt; ${cfg.medPct}% (Score 1)</span>
+                    </div>
+                `;
+            }
+        }
+        window.renderHODFormulaConfigPanel = renderHODFormulaConfigPanel;
+
         function calculateCOScoreAndLevel(mark, maxMark = 10) {
+            const cfg = window.attainmentFormulaConfig || { highPct: 70, medPct: 60 };
             const pct = maxMark > 0 ? (mark / maxMark) * 100 : 0;
-            if (pct >= 70) {
+            if (pct >= cfg.highPct) {
                 return { level: 'High', score: 3, badgeClass: 'badge-attainment-high', pct: Math.round(pct) };
-            } else if (pct >= 60) {
+            } else if (pct >= cfg.medPct) {
                 return { level: 'Medium', score: 2, badgeClass: 'badge-attainment-medium', pct: Math.round(pct) };
             } else {
                 return { level: 'Low', score: 1, badgeClass: 'badge-attainment-low', pct: Math.round(pct) };
@@ -9952,11 +10332,17 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             const container = document.getElementById(containerId);
             if (!container) return;
 
+            await loadAttainmentFormulaConfig();
+            const cfg = window.attainmentFormulaConfig || { directWeight: 80, indirectWeight: 20, highPct: 70, medPct: 60 };
+
             container.innerHTML = `
                 <div class="card co-attainment-container">
                     <h3 style="display:flex;align-items:center;gap:10px;">
                         <span>🎯</span> Course Outcome (CO) Attainment Calculator & Report
                     </h3>
+
+                    <!-- HOD Attainment Formula Config Card -->
+                    <div id="${role}HODFormulaCard"></div>
 
                     <!-- Rubric Breakdown Info Box -->
                     <div class="co-rubric-card">
@@ -9969,7 +10355,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                             • <strong>Assignment (5 Marks):</strong> CO1 (1m) + CO2 (1m) + CO3 (1m) + CO4 (1m) + CO5 (1m)<br>
                             • <strong>EndSem (25 Marks):</strong> CO1 (5m) + CO2 (5m) + CO3 (5m) + CO4 (5m) + CO5 (5m)<br>
                             • <strong>CO Totals:</strong> CO1 (10m), CO2 (10m), CO3 (10m), CO4 (10m), CO5 (10m) &rarr; <strong>Total: 50 Marks</strong><br>
-                            • <strong>Attainment Levels:</strong> <span class="badge-attainment-high">&ge; 70%: High (Score 3)</span> &nbsp;|&nbsp; <span class="badge-attainment-medium">60% - 70%: Medium (Score 2)</span> &nbsp;|&nbsp; <span class="badge-attainment-low">&lt; 60%: Low (Score 1)</span>
+                            • <strong>Attainment Cutoffs (HOD Config):</strong> <span class="badge-attainment-high">&ge; ${cfg.highPct}%: High (Score 3)</span> &nbsp;|&nbsp; <span class="badge-attainment-medium">${cfg.medPct}% - ${cfg.highPct - 1}%: Medium (Score 2)</span> &nbsp;|&nbsp; <span class="badge-attainment-low">&lt; ${cfg.medPct}%: Low (Score 1)</span>
                         </div>
                     </div>
 
@@ -10018,6 +10404,9 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                         </div>
                     </div>
 
+                    <!-- Indirect & Total Attainment Config Card -->
+                    <div id="${role}IndirectAttainmentCard" style="margin-bottom:20px;"></div>
+
                     <!-- Summary KPI Stat Cards -->
                     <div id="${role}COAttainmentStats" class="stats-grid" style="margin-bottom:20px;grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
                         <!-- Stat cards will be dynamically rendered here -->
@@ -10032,9 +10421,13 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 
                     <!-- Class Attainment Summary Matrix -->
                     <div id="${role}COAttainmentSummaryMatrix" style="margin-top:24px;"></div>
+
+                    <!-- CO Attainment Visualization Charts & Historical Comparison -->
+                    <div id="${role}COAttainmentVisualizationContainer" style="margin-top:24px;"></div>
                 </div>
             `;
 
+            renderHODFormulaConfigPanel(role);
             await populateCOAttainmentSubjects(role);
         }
 
@@ -10137,10 +10530,15 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 // Check saved CO attainment doc in Firestore
                 const docId = `${subjectId}_${year}_${semester}`;
                 let savedData = null;
+                let savedIndirect = null;
+                let savedPrevious = null;
                 if (!forceRecalculate) {
                     const docSnap = await window.getDoc(window.doc(window.db, 'co_attainments', docId));
                     if (docSnap.exists()) {
-                        savedData = docSnap.data().studentsMap || null;
+                        const dData = docSnap.data();
+                        savedData = dData.studentsMap || null;
+                        savedIndirect = dData.indirectAttainment || null;
+                        savedPrevious = dData.previousAttainment || null;
                     }
                 }
 
@@ -10254,9 +10652,14 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 });
 
                 // Store window reference for live calculations
+                const indirectAttainment = savedIndirect || { CO1: 3.0, CO2: 3.0, CO3: 3.0, CO4: 3.0, CO5: 3.0 };
+                const previousAttainment = savedPrevious || { CO1: 2.4, CO2: 2.5, CO3: 2.2, CO4: 2.6, CO5: 2.4 };
                 window[`__coAttainmentData_${role}`] = {
-                    subjectId, year, semester, students: studentsData
+                    subjectId, year, semester, students: studentsData, indirectAttainment, previousAttainment
                 };
+
+                // Render Indirect Attainment Control Card
+                renderIndirectAttainmentCard(role);
 
                 // Render Table Matrix
                 renderCOAttainmentMatrixTable(role);
@@ -10265,6 +10668,164 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                 wrapper.innerHTML = `<div class="alert alert-danger">Error fetching data: ${error.message}</div>`;
             }
         }
+
+        function renderIndirectAttainmentCard(role) {
+            const cardContainer = document.getElementById(`${role}IndirectAttainmentCard`);
+            if (!cardContainer) return;
+
+            const dataObj = window[`__coAttainmentData_${role}`] || {};
+            const indirect = dataObj.indirectAttainment || { CO1: 3.0, CO2: 3.0, CO3: 3.0, CO4: 3.0, CO5: 3.0 };
+
+            cardContainer.innerHTML = `
+                <div class="card" style="background:var(--bg-surface2);border:1px solid var(--border-md);border-radius:10px;padding:16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+                        <h4 style="margin:0;display:flex;align-items:center;gap:8px;color:var(--primary);">
+                            <span>📝</span> Indirect Attainment Scoring & Excel Import (Scale: 0 - 3 Marks)
+                        </h4>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <button class="btn btn-sm btn-outline" onclick="downloadIndirectAttainmentTemplate('${role}')" style="font-size:12px;background:#fff;border-color:var(--border-md);">
+                                📥 Download Indirect Excel Template
+                            </button>
+                            <label class="btn btn-sm" style="font-size:12px;margin:0;cursor:pointer;background:#0284c7;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+                                📤 Import Indirect Excel (.xlsx)
+                                <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="handleIndirectAttainmentExcelImport(event, '${role}')">
+                            </label>
+                        </div>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-main);margin-bottom:12px;background:rgba(255,255,255,0.85);padding:8px 12px;border-radius:6px;border-left:4px solid #0284c7;">
+                        <strong>Total Attainment Formula:</strong> <code>Total Attainment = (Direct Attainment Score × 0.8) + (Indirect Attainment Score × 0.2)</code>
+                        <br><small style="color:var(--gray-600);">* Teachers can enter Indirect Attainment scores (0 to 3 marks) per CO below or import from Excel.</small>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:10px;">
+                        ${['CO1','CO2','CO3','CO4','CO5'].map(co => `
+                            <div style="background:#fff;padding:10px;border-radius:8px;border:1px solid var(--border-lt);text-align:center;">
+                                <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;color:var(--primary);">${co} Indirect</label>
+                                <div style="display:flex;align-items:center;justify-content:center;gap:4px;">
+                                    <input type="number" id="${role}_indirect_${co}" min="0" max="3" step="0.1" 
+                                        value="${(indirect[co] !== undefined ? indirect[co] : 3.0).toFixed(1)}" 
+                                        style="width:65px;text-align:center;font-weight:700;padding:4px 6px;border-radius:4px;border:1px solid var(--border-md);"
+                                        onchange="onIndirectAttainmentInputChanged('${role}', '${co}')">
+                                    <span style="font-size:11px;color:var(--gray-500);">/ 3</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        window.renderIndirectAttainmentCard = renderIndirectAttainmentCard;
+
+        function downloadIndirectAttainmentTemplate(role) {
+            if (typeof XLSX === 'undefined') {
+                showToast('Excel library not loaded.', 'danger');
+                return;
+            }
+            const rows = [
+                ['UNIVERSAL STUDENT EVALUATION SYSTEM - INDIRECT CO ATTAINMENT TEMPLATE'],
+                ['Instructions: Enter Indirect Attainment Score (Scale: 0 to 3) for each Course Outcome.'],
+                [''],
+                ['Course Outcome', 'CO Description / Details', 'Indirect Attainment Score (0 - 3)'],
+                ['CO1', 'Class & Object Implementation', 3.0],
+                ['CO2', 'Constructor & Functions Usage', 3.0],
+                ['CO3', 'Inheritance & Polymorphism', 3.0],
+                ['CO4', 'Program Structure & Logic', 3.0],
+                ['CO5', 'Templates & Exception Handling', 3.0]
+            ];
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            ws['!cols'] = [{ wch: 18 }, { wch: 36 }, { wch: 30 }];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Indirect Attainment');
+            XLSX.writeFile(wb, 'Indirect_CO_Attainment_Template.xlsx');
+            showToast('Indirect Attainment Excel template downloaded successfully!', 'success');
+        }
+        window.downloadIndirectAttainmentTemplate = downloadIndirectAttainmentTemplate;
+
+        function handleIndirectAttainmentExcelImport(event, role) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            if (typeof XLSX === 'undefined') {
+                showToast('Excel library not loaded.', 'danger');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+                        showToast('No sheets found in Excel file.', 'danger');
+                        return;
+                    }
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+                    const dataObj = window[`__coAttainmentData_${role}`] || {};
+                    if (!dataObj.indirectAttainment) {
+                        dataObj.indirectAttainment = { CO1: 3.0, CO2: 3.0, CO3: 3.0, CO4: 3.0, CO5: 3.0 };
+                    }
+
+                    let countFound = 0;
+                    json.forEach(row => {
+                        if (Array.isArray(row) && row.length >= 2) {
+                            const coKey = String(row[0] || '').trim().toUpperCase();
+                            if (['CO1', 'CO2', 'CO3', 'CO4', 'CO5'].includes(coKey)) {
+                                let val = null;
+                                for (let i = 1; i < row.length; i++) {
+                                    if (row[i] !== '' && !isNaN(parseFloat(row[i]))) {
+                                        val = parseFloat(row[i]);
+                                        break;
+                                    }
+                                }
+                                if (val !== null) {
+                                    val = Math.max(0, Math.min(3, val));
+                                    dataObj.indirectAttainment[coKey] = val;
+                                    countFound++;
+                                }
+                            }
+                        }
+                    });
+
+                    window[`__coAttainmentData_${role}`] = dataObj;
+
+                    ['CO1', 'CO2', 'CO3', 'CO4', 'CO5'].forEach(co => {
+                        const inputEl = document.getElementById(`${role}_indirect_${co}`);
+                        if (inputEl) inputEl.value = (dataObj.indirectAttainment[co] || 3.0).toFixed(1);
+                    });
+
+                    recalculateAllCOAttainmentAverages(role);
+                    showToast(`📥 Imported Indirect Attainment for ${countFound} COs successfully! Total Attainment updated (80% Direct + 20% Indirect).`, 'success', 5000);
+                } catch (err) {
+                    console.error('Error reading Indirect Attainment Excel:', err);
+                    showToast('Failed to parse Excel file: ' + err.message, 'danger');
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+        window.handleIndirectAttainmentExcelImport = handleIndirectAttainmentExcelImport;
+
+        function onIndirectAttainmentInputChanged(role, co) {
+            const dataObj = window[`__coAttainmentData_${role}`];
+            if (!dataObj) return;
+
+            if (!dataObj.indirectAttainment) {
+                dataObj.indirectAttainment = { CO1: 3.0, CO2: 3.0, CO3: 3.0, CO4: 3.0, CO5: 3.0 };
+            }
+
+            const inputEl = document.getElementById(`${role}_indirect_${co}`);
+            if (inputEl) {
+                let val = parseFloat(inputEl.value);
+                if (isNaN(val)) val = 0;
+                val = Math.max(0, Math.min(3, val));
+                dataObj.indirectAttainment[co] = val;
+            }
+
+            recalculateAllCOAttainmentAverages(role);
+        }
+        window.onIndirectAttainmentInputChanged = onIndirectAttainmentInputChanged;
 
         function renderCOAttainmentMatrixTable(role) {
             const dataObj = window[`__coAttainmentData_${role}`];
@@ -10521,23 +11082,32 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
             // Update Class Attainment Summary Matrix Table
             const summaryContainer = document.getElementById(`${role}COAttainmentSummaryMatrix`);
             if (summaryContainer) {
+                const indirectMap = dataObj.indirectAttainment || { CO1: 3.0, CO2: 3.0, CO3: 3.0, CO4: 3.0, CO5: 3.0 };
+                const cfg = window.attainmentFormulaConfig || { directWeight: 80, indirectWeight: 20, highPct: 70, medPct: 60 };
+                const dWeight = cfg.directWeight / 100;
+                const iWeight = cfg.indirectWeight / 100;
+
                 let sumHtml = `
                     <div class="card" style="border:1px solid var(--border-md);border-radius:10px;">
-                        <h4 style="margin-top:0;display:flex;align-items:center;gap:8px;">
-                            <span>📊</span> Course Outcome (CO) Attainment Summary Matrix
+                        <h4 style="margin-top:0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                            <span style="display:flex;align-items:center;gap:8px;">
+                                <span>📊</span> Course Outcome (CO) Direct, Indirect & Total Attainment Summary Matrix
+                            </span>
+                            <span style="font-size:12px;font-weight:600;background:#e0e7ff;color:#3730a3;padding:4px 10px;border-radius:20px;">
+                                Formula: Total = (Direct × ${cfg.directWeight}%) + (Indirect × ${cfg.indirectWeight}%)
+                            </span>
                         </h4>
+                        <div style="overflow-x:auto;">
                         <table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:13px;">
                             <thead>
                                 <tr style="background:var(--bg-surface2);">
-                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);text-align:left;">Course Outcome</th>
-                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);">Max CO Mark</th>
-                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);">Avg CO Mark</th>
-                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);color:#15803d;">High (&ge; 70%)</th>
-                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);color:#a16207;">Medium (60-69%)</th>
-                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);color:#b91c1c;">Low (&lt; 60%)</th>
-                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);">&ge; 70% Student %</th>
-                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);">Attainment Score</th>
-                                    <th style="padding:8px 12px;border:1px solid var(--border-lt);">Final Level</th>
+                                    <th style="padding:10px 12px;border:1px solid var(--border-lt);text-align:left;">Course Outcome</th>
+                                    <th style="padding:10px 12px;border:1px solid var(--border-lt);">Max CO Mark</th>
+                                    <th style="padding:10px 12px;border:1px solid var(--border-lt);">Avg CO Mark</th>
+                                    <th style="padding:10px 12px;border:1px solid var(--border-lt);background:#eff6ff;color:#1e40af;">Direct Attainment Score (/3) [${cfg.directWeight}%]</th>
+                                    <th style="padding:10px 12px;border:1px solid var(--border-lt);background:#f0fdf4;color:#166534;">Indirect Attainment Score (/3) [${cfg.indirectWeight}%]</th>
+                                    <th style="padding:10px 12px;border:1px solid var(--border-lt);background:#fefce8;color:#854d0e;font-weight:800;">Total Attainment Score (/3)</th>
+                                    <th style="padding:10px 12px;border:1px solid var(--border-lt);">Final Total Level</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -10545,27 +11115,33 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 
                 cos.forEach(co => {
                     const avgMark = (sums[co].Total / count).toFixed(2);
-                    const highPct = Math.round((sums[co].HighCount / count) * 100);
-                    const avgScore = (sums[co].Score / count).toFixed(2);
-                    const res = calculateCOScoreAndLevel(parseFloat(avgMark), 10);
+                    const directScore = parseFloat((sums[co].Score / count).toFixed(2));
+                    const indirectScore = parseFloat((indirectMap[co] !== undefined ? indirectMap[co] : 3.0).toFixed(2));
+                    const totalAttainmentScore = ((directScore * dWeight) + (indirectScore * iWeight)).toFixed(2);
+
+                    const totalLevel = totalAttainmentScore >= 2.5 ? 'High (Level 3)' : (totalAttainmentScore >= 1.8 ? 'Medium (Level 2)' : 'Low (Level 1)');
+                    const badgeClass = totalAttainmentScore >= 2.5 ? 'badge-attainment-high' : (totalAttainmentScore >= 1.8 ? 'badge-attainment-medium' : 'badge-attainment-low');
 
                     sumHtml += `
                         <tr>
                             <td style="padding:8px 12px;border:1px solid var(--border-lt);font-weight:700;">${co}</td>
                             <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;">10</td>
                             <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:700;">${avgMark}</td>
-                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;color:#15803d;font-weight:700;">${sums[co].HighCount}</td>
-                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;color:#a16207;font-weight:700;">${sums[co].MedCount}</td>
-                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;color:#b91c1c;font-weight:700;">${sums[co].LowCount}</td>
-                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:700;">${highPct}%</td>
-                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:800;">${avgScore} / 3</td>
-                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;"><span class="${res.badgeClass}">${res.level}</span></td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:700;color:#1d4ed8;background:#f8fafc;">${directScore.toFixed(2)} / 3</td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:700;color:#15803d;background:#f8fafc;">${indirectScore.toFixed(2)} / 3</td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:900;font-size:14px;color:#a16207;background:#fffbeb;">${totalAttainmentScore} / 3</td>
+                            <td style="padding:8px 12px;border:1px solid var(--border-lt);text-align:center;"><span class="${badgeClass}">${totalLevel}</span></td>
                         </tr>
                     `;
                 });
 
-                sumHtml += `</tbody></table></div>`;
+                sumHtml += `</tbody></table></div></div>`;
                 summaryContainer.innerHTML = sumHtml;
+            }
+
+            // Render Visualization Charts only if container is present on active page
+            if (document.getElementById(`${role}COAttainmentVisualizationContainer`)) {
+                renderCOAttainmentVisualizations(role);
             }
         }
 
@@ -10609,16 +11185,699 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     academicYear: year,
                     semester,
                     studentsMap,
+                    indirectAttainment: dataObj.indirectAttainment || { CO1: 3.0, CO2: 3.0, CO3: 3.0, CO4: 3.0, CO5: 3.0 },
+                    previousAttainment: dataObj.previousAttainment || { CO1: 2.4, CO2: 2.5, CO3: 2.2, CO4: 2.6, CO5: 2.4 },
                     updatedAt: new Date().toISOString(),
                     updatedBy: window.currentUser ? window.currentUser.uid : 'system'
                 });
                 window.hideLoadingMessage();
-                showToast('CO Attainment records saved successfully!', 'success');
+                showToast('CO Attainment, Indirect & Historical records saved successfully!', 'success');
             } catch (err) {
                 window.hideLoadingMessage();
                 showToast('Error saving CO Attainment: ' + err.message, 'danger');
             }
         }
+
+        /* ==========================================================================
+           CO ATTAINMENT VISUALIZATION & HISTORICAL COMPARISON MODULE
+           ========================================================================== */
+
+        window.__coCharts = window.__coCharts || {};
+
+        function renderCOAttainmentVisualizations(role) {
+            const dataObj = window[`__coAttainmentData_${role}`];
+            if (!dataObj) return;
+
+            let vizContainer = document.getElementById(`${role}COAttainmentVisualizationContainer`);
+            if (!vizContainer) {
+                const parentCard = document.querySelector(`#${role}CoattainmentContainer .co-attainment-container`);
+                if (parentCard) {
+                    vizContainer = document.createElement('div');
+                    vizContainer.id = `${role}COAttainmentVisualizationContainer`;
+                    vizContainer.style.marginTop = '24px';
+                    parentCard.appendChild(vizContainer);
+                } else {
+                    return;
+                }
+            }
+
+            const cos = ['CO1', 'CO2', 'CO3', 'CO4', 'CO5'];
+            const indirectMap = dataObj.indirectAttainment || { CO1: 3.0, CO2: 3.0, CO3: 3.0, CO4: 3.0, CO5: 3.0 };
+
+            const cfg = window.attainmentFormulaConfig || { directWeight: 80, indirectWeight: 20, highPct: 70, medPct: 60 };
+            const dWeight = cfg.directWeight / 100;
+            const iWeight = cfg.indirectWeight / 100;
+
+            const directScores = [];
+            const indirectScores = [];
+            const totalScores = [];
+            const levelsCount = { High: 0, Medium: 0, Low: 0 };
+
+            const count = dataObj.students.length || 1;
+
+            cos.forEach(co => {
+                let scoreSum = 0;
+                dataObj.students.forEach(st => {
+                    const m = st.marks[co];
+                    const coTot = m.IPA1 + m.IPA2 + m.Assignment + m.EndSem;
+                    const res = calculateCOScoreAndLevel(coTot, 10);
+                    scoreSum += res.score;
+                });
+
+                const dScore = parseFloat((scoreSum / count).toFixed(2));
+                const iScore = parseFloat((indirectMap[co] !== undefined ? indirectMap[co] : 3.0).toFixed(2));
+                const tScore = parseFloat(((dScore * dWeight) + (iScore * iWeight)).toFixed(2));
+
+                directScores.push(dScore);
+                indirectScores.push(iScore);
+                totalScores.push(tScore);
+
+                if (tScore >= 2.5) levelsCount.High++;
+                else if (tScore >= 1.8) levelsCount.Medium++;
+                else levelsCount.Low++;
+            });
+
+            vizContainer.innerHTML = `
+                <div class="card" style="border:1px solid var(--border-md);border-radius:10px;padding:20px;background:var(--bg-surface);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;border-bottom:1px solid var(--border-lt);padding-bottom:12px;">
+                        <div>
+                            <h3 style="margin:0;display:flex;align-items:center;gap:8px;color:var(--primary);">
+                                <span>📈</span> Course Outcome (CO) Attainment Visual Analytics & Historical Benchmark
+                            </h3>
+                            <small style="color:var(--text-secondary);">Multi-bar graph comparison, CO spider radar profile, level breakdown & last year/sem benchmark analysis</small>
+                        </div>
+
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <button class="btn btn-sm btn-outline" onclick="downloadHistoricalAttainmentTemplate()" style="font-size:12px;background:#fff;border-color:var(--border-md);">
+                                📥 Download Last Year/Sem Template (.xlsx)
+                            </button>
+                            <label class="btn btn-sm" style="font-size:12px;margin:0;cursor:pointer;background:#4f46e5;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+                                📤 Upload Last Year/Sem Marks (.xlsx)
+                                <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="handleHistoricalAttainmentImport(event, '${role}')">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Charts Grid -->
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:20px;">
+                        <!-- 1. Bar Chart: Direct vs Indirect vs Total -->
+                        <div style="background:var(--bg-surface2);padding:16px;border-radius:10px;border:1px solid var(--border-lt);">
+                            <h4 style="margin-top:0;margin-bottom:10px;font-size:13px;color:var(--primary);display:flex;align-items:center;gap:6px;">
+                                📊 Direct, Indirect & Total Attainment Comparison Bar Chart
+                            </h4>
+                            <div style="height:250px;position:relative;">
+                                <canvas id="${role}COAttainmentBarCanvas"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- 2. Radar Chart: Whole CO Profile -->
+                        <div style="background:var(--bg-surface2);padding:16px;border-radius:10px;border:1px solid var(--border-lt);">
+                            <h4 style="margin-top:0;margin-bottom:10px;font-size:13px;color:var(--primary);display:flex;align-items:center;gap:6px;">
+                                🕸️ Course Outcome (CO) Spider Radar Graph
+                            </h4>
+                            <div style="height:250px;position:relative;">
+                                <canvas id="${role}COAttainmentRadarCanvas"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- 3. Pie Chart: Level Distribution -->
+                        <div style="background:var(--bg-surface2);padding:16px;border-radius:10px;border:1px solid var(--border-lt);">
+                            <h4 style="margin-top:0;margin-bottom:10px;font-size:13px;color:var(--primary);display:flex;align-items:center;gap:6px;">
+                                🍩 Attainment Level Distribution Pie Chart
+                            </h4>
+                            <div style="height:250px;position:relative;">
+                                <canvas id="${role}COAttainmentPieCanvas"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- 4. Historical Comparison Chart -->
+                        <div style="background:var(--bg-surface2);padding:16px;border-radius:10px;border:1px solid var(--border-lt);">
+                            <h4 style="margin-top:0;margin-bottom:10px;font-size:13px;color:var(--primary);display:flex;align-items:center;gap:6px;">
+                                🔄 Historical Benchmark Comparison (Current vs Last Sem/Year)
+                            </h4>
+                            <div style="height:250px;position:relative;">
+                                <canvas id="${role}COAttainmentCompCanvas"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 7: CO Attainment Gap Analysis Table -->
+                    <div style="margin-top:24px;background:var(--bg-surface2);padding:18px;border-radius:10px;border:1px solid var(--border-lt);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+                            <h4 style="margin:0;font-size:14px;color:var(--primary);display:flex;align-items:center;gap:8px;">
+                                <span>🔍</span> Step 7: Course Outcome (CO) Attainment Gap Analysis
+                            </h4>
+                            <span style="font-size:12px;font-weight:600;background:#e0f2fe;color:#0369a1;padding:4px 10px;border-radius:20px;">
+                                Formula: Gap = Current Total CO Attainment - Last Year/Sem CO Attainment
+                            </span>
+                        </div>
+                        
+                        <div style="overflow-x:auto;">
+                            <table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border-radius:8px;">
+                                <thead>
+                                    <tr style="background:var(--bg-surface2);border-bottom:2px solid var(--border-md);">
+                                        <th style="padding:10px 12px;border:1px solid var(--border-lt);text-align:left;">Course Outcome</th>
+                                        <th style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;">Current Attainment (/3)</th>
+                                        <th style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;">Last Year/Sem Attainment (/3)</th>
+                                        <th style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;">Attainment Gap</th>
+                                        <th style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;">Status</th>
+                                        <th style="padding:10px 12px;border:1px solid var(--border-lt);text-align:left;">Action Plan & Recommended Remedy</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${cos.map((co, idx) => {
+                                        const cScore = totalScores[idx];
+                                        const prevMap = dataObj.previousAttainment || { CO1: 2.4, CO2: 2.5, CO3: 2.2, CO4: 2.6, CO5: 2.4 };
+                                        const pScore = parseFloat((prevMap[co] !== undefined ? prevMap[co] : 2.5).toFixed(2));
+                                        const gap = parseFloat((cScore - pScore).toFixed(2));
+                                        const isTargetMet = gap >= 0;
+
+                                        const statusBadge = isTargetMet 
+                                            ? `<span class="badge badge-success" style="background:#dcfce7;color:#15803d;padding:4px 8px;border-radius:6px;font-weight:700;">Target Met (+${gap.toFixed(2)})</span>`
+                                            : `<span class="badge badge-danger" style="background:#fee2e2;color:#b91c1c;padding:4px 8px;border-radius:6px;font-weight:700;">Gap Identified (${gap.toFixed(2)})</span>`;
+
+                                        const actionPlan = isTargetMet 
+                                            ? `Target achieved. Maintain pedagogical methods and practical sessions.`
+                                            : `Attainment shortfall of ${Math.abs(gap).toFixed(2)} marks. Remedial classes and extra practice tutorials recommended for ${co}.`;
+
+                                        return `
+                                            <tr>
+                                                <td style="padding:10px 12px;border:1px solid var(--border-lt);font-weight:700;">${co}</td>
+                                                <td style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:800;color:#1e40af;">${cScore.toFixed(2)} / 3</td>
+                                                <td style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:600;color:#475569;">${pScore.toFixed(2)} / 3</td>
+                                                <td style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:800;color:${isTargetMet ? '#15803d' : '#b91c1c'};">${isTargetMet ? '+' : ''}${gap.toFixed(2)}</td>
+                                                <td style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;">${statusBadge}</td>
+                                                <td style="padding:10px 12px;border:1px solid var(--border-lt);font-size:12px;line-height:1.5;">${actionPlan}</td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            setTimeout(() => {
+                initCOCharts(role, cos, directScores, indirectScores, totalScores, levelsCount);
+            }, 50);
+        }
+        window.renderCOAttainmentVisualizations = renderCOAttainmentVisualizations;
+
+        function initCOCharts(role, cos, directScores, indirectScores, totalScores, levelsCount) {
+            if (typeof Chart === 'undefined') {
+                console.warn('Chart.js library not loaded.');
+                return;
+            }
+
+            if (!window.__coCharts[role]) {
+                window.__coCharts[role] = { bar: null, radar: null, pie: null, comparison: null };
+            }
+            const roleCharts = window.__coCharts[role];
+
+            const dataObj = window[`__coAttainmentData_${role}`] || {};
+            const prevScores = dataObj.previousAttainment || { CO1: 2.4, CO2: 2.5, CO3: 2.2, CO4: 2.6, CO5: 2.4 };
+            const prevArray = cos.map(co => prevScores[co] !== undefined ? prevScores[co] : 2.5);
+
+            const cfg = window.attainmentFormulaConfig || { directWeight: 80, indirectWeight: 20, highPct: 70, medPct: 60 };
+
+            // 1. BAR CHART
+            const barCanvas = document.getElementById(`${role}COAttainmentBarCanvas`);
+            if (barCanvas) {
+                if (roleCharts.bar) roleCharts.bar.destroy();
+                roleCharts.bar = new Chart(barCanvas.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: cos,
+                        datasets: [
+                            { label: `Direct (${cfg.directWeight}%)`, data: directScores, backgroundColor: '#3b82f6' },
+                            { label: `Indirect (${cfg.indirectWeight}%)`, data: indirectScores, backgroundColor: '#22c55e' },
+                            { label: 'Total Attainment', data: totalScores, backgroundColor: '#eab308' }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, max: 3.5, ticks: { stepSize: 0.5 } }
+                        }
+                    }
+                });
+            }
+
+            // 2. RADAR CHART
+            const radarCanvas = document.getElementById(`${role}COAttainmentRadarCanvas`);
+            if (radarCanvas) {
+                if (roleCharts.radar) roleCharts.radar.destroy();
+                roleCharts.radar = new Chart(radarCanvas.getContext('2d'), {
+                    type: 'radar',
+                    data: {
+                        labels: cos,
+                        datasets: [
+                            {
+                                label: 'Whole Subject CO Profile',
+                                data: totalScores,
+                                backgroundColor: 'rgba(99, 102, 241, 0.25)',
+                                borderColor: '#6366f1',
+                                pointBackgroundColor: '#6366f1',
+                                borderWidth: 2
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: { min: 0, max: 3, ticks: { stepSize: 1 } }
+                        }
+                    }
+                });
+            }
+
+            // 3. PIE CHART
+            const pieCanvas = document.getElementById(`${role}COAttainmentPieCanvas`);
+            if (pieCanvas) {
+                if (roleCharts.pie) roleCharts.pie.destroy();
+                roleCharts.pie = new Chart(pieCanvas.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['High (Level 3: >=2.5)', 'Medium (Level 2: 1.8-2.4)', 'Low (Level 1: <1.8)'],
+                        datasets: [{
+                            data: [levelsCount.High, levelsCount.Medium, levelsCount.Low],
+                            backgroundColor: ['#22c55e', '#eab308', '#ef4444']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'bottom' } }
+                    }
+                });
+            }
+
+            // 4. HISTORICAL COMPARISON CHART
+            const compCanvas = document.getElementById(`${role}COAttainmentCompCanvas`);
+            if (compCanvas) {
+                if (roleCharts.comparison) roleCharts.comparison.destroy();
+                roleCharts.comparison = new Chart(compCanvas.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: cos,
+                        datasets: [
+                            { label: 'Current Sem Attainment', data: totalScores, backgroundColor: '#4f46e5' },
+                            { label: 'Last Year/Sem Benchmark', data: prevArray, backgroundColor: '#9ca3af' }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, max: 3.5, ticks: { stepSize: 0.5 } }
+                        }
+                    }
+                });
+            }
+        }
+
+        function downloadHistoricalAttainmentTemplate() {
+            if (typeof XLSX === 'undefined') {
+                showToast('Excel library not loaded.', 'danger');
+                return;
+            }
+            const rows = [
+                ['UNIVERSAL STUDENT EVALUATION SYSTEM - HISTORICAL (LAST YEAR/SEM) CO ATTAINMENT TEMPLATE'],
+                ['Instructions: Enter previous semester or last year Total CO Attainment Scores (Scale: 0 to 3) for comparison.'],
+                [''],
+                ['Course Outcome', 'Academic Period / Details', 'Previous Total Attainment Score (0 - 3)'],
+                ['CO1', '2024-25 SEM-1 / Prev Batch', 2.4],
+                ['CO2', '2024-25 SEM-1 / Prev Batch', 2.5],
+                ['CO3', '2024-25 SEM-1 / Prev Batch', 2.2],
+                ['CO4', '2024-25 SEM-1 / Prev Batch', 2.6],
+                ['CO5', '2024-25 SEM-1 / Prev Batch', 2.4]
+            ];
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            ws['!cols'] = [{ wch: 18 }, { wch: 36 }, { wch: 34 }];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Previous Attainment');
+            XLSX.writeFile(wb, 'Previous_Year_CO_Attainment_Template.xlsx');
+            showToast('Historical CO Attainment Excel template downloaded!', 'success');
+        }
+        window.downloadHistoricalAttainmentTemplate = downloadHistoricalAttainmentTemplate;
+
+        function handleHistoricalAttainmentImport(event, role) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            if (typeof XLSX === 'undefined') {
+                showToast('Excel library not loaded.', 'danger');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+                        showToast('No sheets found in Excel file.', 'danger');
+                        return;
+                    }
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+                    const dataObj = window[`__coAttainmentData_${role}`] || {};
+                    if (!dataObj.previousAttainment) {
+                        dataObj.previousAttainment = { CO1: 2.4, CO2: 2.5, CO3: 2.2, CO4: 2.6, CO5: 2.4 };
+                    }
+
+                    let countFound = 0;
+                    json.forEach(row => {
+                        if (Array.isArray(row) && row.length >= 2) {
+                            const coKey = String(row[0] || '').trim().toUpperCase();
+                            if (['CO1', 'CO2', 'CO3', 'CO4', 'CO5'].includes(coKey)) {
+                                let val = null;
+                                for (let i = 1; i < row.length; i++) {
+                                    if (row[i] !== '' && !isNaN(parseFloat(row[i]))) {
+                                        val = parseFloat(row[i]);
+                                        break;
+                                    }
+                                }
+                                if (val !== null) {
+                                    val = Math.max(0, Math.min(3, val));
+                                    dataObj.previousAttainment[coKey] = val;
+                                    countFound++;
+                                }
+                            }
+                        }
+                    });
+
+                    window[`__coAttainmentData_${role}`] = dataObj;
+                    renderCOAttainmentVisualizations(role);
+                    showToast(`📥 Imported Last Year/Sem Attainment for ${countFound} COs successfully! Historical comparison chart updated.`, 'success', 5000);
+                } catch (err) {
+                    console.error('Error importing historical attainment:', err);
+                    showToast('Failed to parse Excel file: ' + err.message, 'danger');
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+        window.handleHistoricalAttainmentImport = handleHistoricalAttainmentImport;
+
+        /* ==========================================================================
+           CO VISUALIZATION DEDICATED PAGE MODULE
+           ========================================================================== */
+
+        async function populateCOVizSubjects(role) {
+            const selectEl = document.getElementById(`${role}COVizSubjectSelect`);
+            if (!selectEl) return;
+
+            selectEl.innerHTML = '<option value="">Select Subject</option>';
+
+            try {
+                let q = window.collection(window.db, 'subjects');
+                if (role === 'hod' && window.currentUser?.department) {
+                    q = window.query(q, window.where('department', '==', window.currentUser.department));
+                }
+                const subjectsSnap = await window.getDocs(q);
+                subjectsSnap.forEach(docSnap => {
+                    const data = docSnap.data();
+                    const opt = document.createElement('option');
+                    opt.value = docSnap.id;
+                    opt.textContent = `${data.name} (${data.code || ''}) - ${data.class || ''} ${data.division || ''}`;
+                    selectEl.appendChild(opt);
+                });
+
+                if (selectEl.options.length > 1) {
+                    selectEl.selectedIndex = 1;
+                    await fetchAndRenderCOVisualization(role);
+                }
+            } catch (err) {
+                console.error('Error loading CO viz subjects:', err);
+            }
+        }
+
+        async function fetchAndRenderCOVisualization(role) {
+            const yearSelect = document.getElementById(`${role}COVizYear`);
+            const semSelect = document.getElementById(`${role}COVizSem`);
+            const subjectSelect = document.getElementById(`${role}COVizSubjectSelect`);
+
+            const year = yearSelect ? yearSelect.value : '2025-26';
+            const semester = semSelect ? semSelect.value : 'SEM-1';
+            const subjectId = subjectSelect ? subjectSelect.value : '';
+
+            if (!subjectId) return;
+
+            try {
+                await loadAttainmentFormulaConfig();
+                const dataObj = window[`__coAttainmentData_${role}`];
+                if (!dataObj || dataObj.subjectId !== subjectId) {
+                    await fetchAndRenderCOAttainment(role);
+                }
+                renderCOAttainmentVisualizations(role);
+            } catch (e) {
+                console.error("Error fetching CO visualization data:", e);
+            }
+        }
+        window.populateCOVizSubjects = populateCOVizSubjects;
+        window.fetchAndRenderCOVisualization = fetchAndRenderCOVisualization;
+
+        async function loadCOVisualizationPage(role = 'teacher') {
+            const containerId = `${role}CovisualizationContainer`;
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            await loadAttainmentFormulaConfig();
+
+            container.innerHTML = `
+                <div class="card co-attainment-container" style="padding:24px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px;border-bottom:2px solid var(--border-md);padding-bottom:16px;">
+                        <div>
+                            <h2 style="margin:0;display:flex;align-items:center;gap:10px;color:var(--primary);">
+                                <span>📈</span> Course Outcome (CO) Visual Analytics & Benchmarking
+                            </h2>
+                            <small style="color:var(--text-secondary);">Interactive visual analytics page featuring Bar Charts, Radar Profile Graphs, Level Breakdown & Historical Comparison</small>
+                        </div>
+                    </div>
+
+                    <!-- Filter Controls -->
+                    <div class="filters-container" style="background:#f8fafc;padding:16px;border-radius:10px;border:1px solid var(--border-lt);margin-bottom:24px;">
+                        <div class="form-row" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px;">
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-weight:600;font-size:12px;">Academic Year</label>
+                                <select id="${role}COVizYear" onchange="fetchAndRenderCOVisualization('${role}')">
+                                    <option value="2024-25">2024-25</option>
+                                    <option value="2025-26" selected>2025-26</option>
+                                    <option value="2026-27">2026-27</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-weight:600;font-size:12px;">Semester</label>
+                                <select id="${role}COVizSem" onchange="fetchAndRenderCOVisualization('${role}')">
+                                    <option value="SEM-1">SEM-1</option>
+                                    <option value="SEM-2">SEM-2</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-weight:600;font-size:12px;">Select Subject</label>
+                                <select id="${role}COVizSubjectSelect" onchange="fetchAndRenderCOVisualization('${role}')">
+                                    <option value="">Loading subjects...</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Visualization Host Container -->
+                    <div id="${role}COAttainmentVisualizationContainer"></div>
+                </div>
+            `;
+
+            await populateCOVizSubjects(role);
+        }
+        window.loadCOVisualizationPage = loadCOVisualizationPage;
+
+        /* ==========================================================================
+           FINAL RESULT MASTER REPORT MODULE
+           ========================================================================== */
+
+        async function populateFinalResultSubjectsAndExams(role) {
+            const subjSelect = document.getElementById(`${role}FinalResultSubjectSelect`);
+            const examSelect = document.getElementById(`${role}FinalResultExamSelect`);
+            if (!subjSelect || !examSelect) return;
+
+            subjSelect.innerHTML = '<option value="">Select Subject</option>';
+            examSelect.innerHTML = '<option value="">Select Exam</option>';
+
+            try {
+                let q = window.collection(window.db, 'subjects');
+                if (role === 'hod' && window.currentUser?.department) {
+                    q = window.query(q, window.where('department', '==', window.currentUser.department));
+                }
+                const subjectsSnap = await window.getDocs(q);
+                subjectsSnap.forEach(docSnap => {
+                    const data = docSnap.data();
+                    const opt = document.createElement('option');
+                    opt.value = docSnap.id;
+                    opt.textContent = `${data.name} (${data.code || ''}) - Div ${data.division || ''}`;
+                    subjSelect.appendChild(opt);
+                });
+
+                if (subjSelect.options.length > 1) {
+                    subjSelect.selectedIndex = 1;
+                    await onFinalResultSubjectChanged(role);
+                }
+            } catch (e) {
+                console.error("Error loading final result subjects:", e);
+            }
+        }
+
+        async function onFinalResultSubjectChanged(role) {
+            const subjSelect = document.getElementById(`${role}FinalResultSubjectSelect`);
+            const examSelect = document.getElementById(`${role}FinalResultExamSelect`);
+            if (!subjSelect || !examSelect) return;
+
+            const subjectId = subjSelect.value;
+            examSelect.innerHTML = '<option value="">Select Exam</option>';
+            if (!subjectId) return;
+
+            try {
+                const examsSnap = await window.getDocs(window.query(
+                    window.collection(window.db, 'exams'),
+                    window.where('subjectId', '==', subjectId)
+                ));
+                examsSnap.forEach(docSnap => {
+                    const data = docSnap.data();
+                    const opt = document.createElement('option');
+                    opt.value = docSnap.id;
+                    opt.textContent = `${data.name} (${data.examType?.toUpperCase() || 'EXAM'}) - Max ${data.totalMarks || 50}m`;
+                    examSelect.appendChild(opt);
+                });
+
+                if (examSelect.options.length > 1) {
+                    examSelect.selectedIndex = 1;
+                }
+            } catch (e) {
+                console.error("Error loading exams for subject:", e);
+            }
+        }
+        window.populateFinalResultSubjectsAndExams = populateFinalResultSubjectsAndExams;
+        window.onFinalResultSubjectChanged = onFinalResultSubjectChanged;
+
+        async function loadFinalResultPage(role = 'teacher') {
+            const containerId = `${role}FinalresultContainer`;
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            await loadAttainmentFormulaConfig();
+            const cfg = window.attainmentFormulaConfig || { directWeight: 80, indirectWeight: 20, highPct: 70, medPct: 60 };
+
+            container.innerHTML = `
+                <div class="card co-attainment-container" style="padding:24px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px;border-bottom:2px solid var(--border-md);padding-bottom:16px;">
+                        <div>
+                            <h2 style="margin:0;display:flex;align-items:center;gap:10px;color:var(--primary);">
+                                <span>🏆</span> Final Subject Result & CO Attainment Master Report
+                            </h2>
+                            <small style="color:var(--text-secondary);">Comprehensive report containing Rubrics, IPA1, IPA2, Assignment, EndSem, Student Marksheet, CO Attainment & Gap Analysis</small>
+                        </div>
+                    </div>
+
+                    <!-- Final Result Selection & Action Header Toolbar -->
+                    <div style="background: linear-gradient(135deg, #eef2ff 0%, #f0fdf4 100%); padding: 20px; border-radius: 12px; border: 1px solid #c7d2fe; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px;">
+                            <!-- Left: Dropdown Selectors -->
+                            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; flex: 1; min-width: 320px;">
+                                <div style="min-width: 220px; flex: 1;">
+                                    <label style="font-weight: 700; font-size: 12px; color: #3730a3; display: block; margin-bottom: 6px;">
+                                        🎯 Select Subject
+                                    </label>
+                                    <select id="${role}FinalResultSubjectSelect" onchange="onFinalResultSubjectChanged('${role}')" style="width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #a5b4fc; background: #fff; font-weight: 600; font-size: 13px; color: #1e1b4b; outline: none; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                                        <option value="">Loading subjects...</option>
+                                    </select>
+                                </div>
+
+                                <div style="min-width: 260px; flex: 1;">
+                                    <label style="font-weight: 700; font-size: 12px; color: #3730a3; display: block; margin-bottom: 6px;">
+                                        📝 Select Exam / Evaluation Component
+                                    </label>
+                                    <select id="${role}FinalResultExamSelect" style="width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #a5b4fc; background: #fff; font-weight: 600; font-size: 13px; color: #1e1b4b; outline: none; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                                        <option value="">Select Exam</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Right: Action Buttons -->
+                            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: nowrap;">
+                                <button class="btn" onclick="exportOfficialUniversityFormatExcel(document.getElementById('${role}FinalResultExamSelect')?.value)" 
+                                    style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; border: none; padding: 11px 20px; border-radius: 8px; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(16,185,129,0.3); cursor: pointer; white-space: nowrap; transition: transform 0.15s ease;">
+                                    <span style="font-size:15px;">📥</span> Export Official 3-Page Excel
+                                </button>
+                                <button class="btn" onclick="window.print()" 
+                                    style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #fff; border: none; padding: 11px 20px; border-radius: 8px; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(79,70,229,0.3); cursor: pointer; white-space: nowrap; transition: transform 0.15s ease;">
+                                    <span style="font-size:15px;">🖨️</span> Print / Save PDF
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Page 1: Academic CO Distribution, Rubrics & Active HOD Formula -->
+                    <div class="card" style="background:#fff;border:1px solid #c7d2fe;border-radius:12px;padding:20px;margin-bottom:24px;box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;border-bottom:1px solid var(--border-lt);padding-bottom:12px;">
+                            <h3 style="margin:0;color:var(--primary);display:flex;align-items:center;gap:10px;font-size:16px;">
+                                <span>📜</span> Page 1: Academic CO Distribution, Exam Weightages & HOD Active Formula
+                            </h3>
+                            <span style="font-size:12px;font-weight:700;background:#dbeafe;color:#1e40af;padding:6px 14px;border-radius:20px;">
+                                Official Academic Master Rubric
+                            </span>
+                        </div>
+                        
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;">
+                            <!-- Rubric Box -->
+                            <div style="background:#f8fafc;padding:16px;border-radius:8px;border:1px solid var(--border-lt);">
+                                <h4 style="margin-top:0;margin-bottom:8px;color:var(--primary);font-size:14px;">📋 Exam Weightage & CO Distribution</h4>
+                                <ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.8;color:var(--text-main);">
+                                    <li><strong>IPA 1 (12 Marks):</strong> CO1 (4m) + CO2 (4m) + CO3 (4m)</li>
+                                    <li><strong>IPA 2 (8 Marks):</strong> CO4 (4m) + CO5 (4m)</li>
+                                    <li><strong>Assignment (5 Marks):</strong> CO1 (1m) + CO2 (1m) + CO3 (1m) + CO4 (1m) + CO5 (1m)</li>
+                                    <li><strong>EndSem (25 Marks):</strong> CO1 (5m) + CO2 (5m) + CO3 (5m) + CO4 (5m) + CO5 (5m)</li>
+                                    <li><strong>Max CO Totals:</strong> CO1 (10m), CO2 (10m), CO3 (10m), CO4 (10m), CO5 (10m) &rarr; <strong>Total: 50 Marks</strong></li>
+                                </ul>
+                            </div>
+
+                            <!-- HOD Attainment Formula Box -->
+                            <div style="background:#eef2ff;padding:16px;border-radius:8px;border:1px solid #c7d2fe;">
+                                <h4 style="margin-top:0;margin-bottom:8px;color:#3730a3;font-size:14px;">👑 HOD Active Attainment Formula & Cutoffs</h4>
+                                <div style="font-size:12px;line-height:1.8;color:#1e1b4b;">
+                                    • <strong>Total Attainment Formula:</strong> <code>Total = (Direct × ${cfg.directWeight}%) + (Indirect × ${cfg.indirectWeight}%)</code><br>
+                                    • <strong>Direct Attainment Score Cutoffs:</strong><br>
+                                      - <span class="badge-attainment-high">&ge; ${cfg.highPct}%: High (Score 3)</span><br>
+                                      - <span class="badge-attainment-medium">${cfg.medPct}% - ${cfg.highPct - 1}%: Medium (Score 2)</span><br>
+                                      - <span class="badge-attainment-low">&lt; ${cfg.medPct}%: Low (Score 1)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Main Content Container for CO Attainment & Marksheet Matrix -->
+                    <div id="${role}FinalResultMainContent"></div>
+                </div>
+            `;
+
+            await populateFinalResultSubjectsAndExams(role);
+
+            // Render CO Attainment content inside final result main content
+            const coAttContainer = document.getElementById(`${role}CoattainmentContainer`);
+            if (coAttContainer) {
+                const contentHost = document.getElementById(`${role}FinalResultMainContent`);
+                if (contentHost) {
+                    contentHost.innerHTML = coAttContainer.innerHTML;
+                }
+            } else {
+                await fetchAndRenderCOAttainment(role);
+            }
+        }
+        window.loadFinalResultPage = loadFinalResultPage;
 
         async function exportCOAttainmentExcel(role) {
             const dataObj = window[`__coAttainmentData_${role}`];
@@ -10734,9 +11993,9 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
 
                 const ws = XLSX.utils.aoa_to_sheet(rows);
                 const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, 'CO Attainment');
-                XLSX.writeFile(wb, `CO_Attainment_${subData.code || subData.name}_${year}_${semester}.xlsx`);
-                showToast('CO Attainment Excel sheet downloaded successfully!', 'success');
+                XLSX.utils.book_append_sheet(wb, ws, 'Page 3 - Direct Attainment');
+                XLSX.writeFile(wb, `Direct_Attainment_${subData.code || subData.name}_${year}_${semester}.xlsx`);
+                showToast('Direct Attainment Excel sheet downloaded successfully!', 'success');
             } catch (err) {
                 console.error('Error exporting CO attainment to Excel:', err);
                 showToast('Export failed: ' + err.message, 'danger');
