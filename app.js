@@ -9705,8 +9705,7 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     'Current Attainment Score (/3)',
                     'Last Year/Sem Attainment Score (/3)',
                     'Attainment Gap (Current - Last Year)',
-                    'Status',
-                    'Action Plan & Recommended Remedy'
+                    'Status'
                 ]);
 
                 const prevScoresMap = (window.__coAttainmentData_teacher?.previousAttainment 
@@ -9723,17 +9722,13 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                     const gap = parseFloat((currentScore - prevScore).toFixed(2));
 
                     const status = gap >= 0 ? `Target Met (+${gap.toFixed(2)})` : `Gap Identified (${gap.toFixed(2)})`;
-                    const actionPlan = gap >= 0 
-                        ? 'Target achieved. Maintain current pedagogical methods and practical sessions.' 
-                        : `Attainment shortfall of ${Math.abs(gap).toFixed(2)} marks. Remedial classes and extra practice tutorials recommended for ${st.coName}.`;
 
                     aoa3.push([
                         st.coName,
                         `${currentScore.toFixed(2)} / 3`,
                         `${prevScore.toFixed(2)} / 3`,
                         (gap >= 0 ? `+${gap.toFixed(2)}` : gap.toFixed(2)),
-                        status,
-                        actionPlan
+                        status
                     ]);
                 });
 
@@ -11341,7 +11336,6 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                                         <th style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;">Last Year/Sem Attainment (/3)</th>
                                         <th style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;">Attainment Gap</th>
                                         <th style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;">Status</th>
-                                        <th style="padding:10px 12px;border:1px solid var(--border-lt);text-align:left;">Action Plan & Recommended Remedy</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -11356,10 +11350,6 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                                             ? `<span class="badge badge-success" style="background:#dcfce7;color:#15803d;padding:4px 8px;border-radius:6px;font-weight:700;">Target Met (+${gap.toFixed(2)})</span>`
                                             : `<span class="badge badge-danger" style="background:#fee2e2;color:#b91c1c;padding:4px 8px;border-radius:6px;font-weight:700;">Gap Identified (${gap.toFixed(2)})</span>`;
 
-                                        const actionPlan = isTargetMet 
-                                            ? `Target achieved. Maintain pedagogical methods and practical sessions.`
-                                            : `Attainment shortfall of ${Math.abs(gap).toFixed(2)} marks. Remedial classes and extra practice tutorials recommended for ${co}.`;
-
                                         return `
                                             <tr>
                                                 <td style="padding:10px 12px;border:1px solid var(--border-lt);font-weight:700;">${co}</td>
@@ -11367,7 +11357,6 @@ ${teacherId ? `<button class="btn btn-sm ${isActive ? 'btn-off' : 'btn-on'}" onc
                                                 <td style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:600;color:#475569;">${pScore.toFixed(2)} / 3</td>
                                                 <td style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;font-weight:800;color:${isTargetMet ? '#15803d' : '#b91c1c'};">${isTargetMet ? '+' : ''}${gap.toFixed(2)}</td>
                                                 <td style="padding:10px 12px;border:1px solid var(--border-lt);text-align:center;">${statusBadge}</td>
-                                                <td style="padding:10px 12px;border:1px solid var(--border-lt);font-size:12px;line-height:1.5;">${actionPlan}</td>
                                             </tr>
                                         `;
                                     }).join('')}
